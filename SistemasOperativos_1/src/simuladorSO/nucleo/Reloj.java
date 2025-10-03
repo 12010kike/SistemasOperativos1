@@ -9,5 +9,12 @@ package simuladorSO.nucleo;
  * @author obelm
  */
 public interface Reloj {
-    
+    void iniciar(); 
+    void pausar(); 
+    void reiniciar();
+    void setDuracionTickMs(long millis); 
+    long getDuracionTickMs();
+    long cicloActual(); 
+    void suscribir(SuscriptorReloj s); 
+    void desuscribir(SuscriptorReloj s);
 }

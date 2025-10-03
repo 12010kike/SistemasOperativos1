@@ -3,11 +3,13 @@
  * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Interface.java to edit this template
  */
 package simuladorSO.nucleo;
+import simuladorSO.modelo.ProcesoPlanificable ;
 
 /**
  *
- * @author obelm
+ * @author eabdf
  */
-public interface SuscriptorReloj {
-   void alTick(long ciclo); 
+public interface Despachador {
+    void despacharACPU(ProcesoPlanificable siguiente, long ciclo);
+    ProcesoPlanificable expropiarActual(long ciclo);
 }
