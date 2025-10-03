@@ -9,5 +9,16 @@ package simuladorSO.modelo;
  * @author eabdf
  */
 public interface PCBVista {
-    
+    long pid(); 
+    String nombre(); 
+    EstadoProceso estado(); 
+    int pc(); 
+    int mar();
+    int totalInstrucciones(); 
+    int instruccionesRestantes(); 
+    TipoProceso tipo();
+    int ioCadaK(); 
+    int ioDuraM(); 
+    int prioridad(); 
+    long cicloLlegada();
 }

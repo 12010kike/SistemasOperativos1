@@ -9,5 +9,5 @@ package simuladorSO.modelo;
  * @author eabdf
  */
 public enum TipoProceso {
-    
+    CPU_BOUND, IO_BOUND
 }

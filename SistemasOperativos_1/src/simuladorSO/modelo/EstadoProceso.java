@@ -9,5 +9,5 @@ package simuladorSO.modelo;
  * @author eabdf
  */
 public enum EstadoProceso {
-    
+    NEW, READY, RUNNING, BLOCKED, TERMINATED, READY_SUSPENDED, BLOCKED_SUSPENDED
 }
