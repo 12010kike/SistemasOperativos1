@@ -8,6 +8,6 @@ package simuladorSO.nucleo;
  *
  * @author obelm
  */
-public interface CPU {
+public interface BusEventos {
     
 }
