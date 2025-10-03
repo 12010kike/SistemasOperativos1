@@ -6,7 +6,7 @@ package simuladorSO.nucleo;
 
 /**
  *
- * @author eabdf
+ * @author obelm
  */
 public interface Reloj {
     
