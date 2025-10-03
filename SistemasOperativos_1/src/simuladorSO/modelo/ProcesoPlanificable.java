@@ -9,5 +9,11 @@ package simuladorSO.modelo;
  * @author eabdf
  */
 public interface ProcesoPlanificable {
-    
+    void ejecutarUnCiclo(long ciclo); 
+    boolean debeSolicitarES(long ciclo); 
+    boolean completo();
+    void setEstado(EstadoProceso s); 
+    void reiniciarQuantum(); 
+    int quantumConsumido(); 
+    void setPrioridad(int p);
 }

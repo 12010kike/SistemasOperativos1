@@ -9,5 +9,7 @@ package simuladorSO.modelo;
  * @author eabdf
  */
 public interface Solicitudes {
-    
+    long cicloSolicitud(); 
+    int duracionCiclos(); 
+    long pid();
 }
