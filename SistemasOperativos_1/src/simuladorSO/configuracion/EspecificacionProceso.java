@@ -3,11 +3,12 @@
  * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Interface.java to edit this template
  */
 package simuladorSO.configuracion;
-
+import simuladorSO.modelo.TipoProceso;
 /**
  *
  * @author obelm
  */
 public interface EspecificacionProceso {
-    
+    String nombre(); int totalInstrucciones(); TipoProceso tipo();
+    int ioCadaK(); int ioDuraM(); int prioridad();
 }
