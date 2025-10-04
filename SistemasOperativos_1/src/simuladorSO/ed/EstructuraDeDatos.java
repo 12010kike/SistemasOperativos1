@@ -7,7 +7,7 @@ package simuladorSO.ed;
 /**
  *
  * @author eabdf
+ * @param <T>
  */
-public interface EstructuraDeDatos {
-    
-}
+public interface EstructuraDeDatos<T> extends Iterable<T> {int tamano(); boolean vacia(); void limpiar();}
+

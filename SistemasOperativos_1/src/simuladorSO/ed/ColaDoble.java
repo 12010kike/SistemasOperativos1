@@ -7,7 +7,9 @@ package simuladorSO.ed;
 /**
  *
  * @author eabdf
+ * @param <T>
  */
-public interface ColaDoble {
+public interface ColaDoble<T> extends EstructuraDeDatos<T> {void agregarPrimero(T x); void agregarUltimo(T x);
+    T sacarPrimero(); T sacarUltimo(); T verPrimero(); T verUltimo();
     
 }
