@@ -8,6 +8,5 @@ package simuladorSO.planificador;
  *
  * @author obelm
  */
-public enum PoliticaPlanificacion {
-    
+public enum PoliticaPlanificacion {FCFS, SJF, SRTF, PRIORIDAD_PREEMPTIVA, RR, MLFQ 
 }
