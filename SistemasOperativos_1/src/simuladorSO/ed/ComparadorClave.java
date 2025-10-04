@@ -7,7 +7,7 @@ package simuladorSO.ed;
 /**
  *
  * @author eabdf
+ * @param <T>
  */
-public interface ComparadorClave {
-    
-}
+public interface ComparadorClave<T> { int comparar(T a, T b); }
+

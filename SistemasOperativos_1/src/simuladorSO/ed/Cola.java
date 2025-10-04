@@ -7,7 +7,7 @@ package simuladorSO.ed;
 /**
  *
  * @author eabdf
+ * @param <T>
  */
-public interface Cola {
+public interface Cola<T> extends EstructuraDeDatos<T> {void ofrecer(T x); T sacar(); T ver();}
     
-}

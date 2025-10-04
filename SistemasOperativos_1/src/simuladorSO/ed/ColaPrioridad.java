@@ -7,7 +7,7 @@ package simuladorSO.ed;
 /**
  *
  * @author eabdf
+ * @param <T>
  */
-public interface ColaPrioridad {
-    
+public interface ColaPrioridad<T> extends EstructuraDeDatos<T> {void insertar(T x); T extraer(); T cima(); void reconstruir();
 }
