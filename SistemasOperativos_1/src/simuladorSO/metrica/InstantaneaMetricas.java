@@ -9,5 +9,10 @@ package simuladorSO.metrica;
  * @author eabdf
  */
 public interface InstantaneaMetricas {
-    
+    long ciclo(); 
+    double rendimiento(); 
+    double utilizacionCPU();
+    double indiceEquidad(); 
+    double tiempoRespuestaProm(); 
+    double tiempoEsperaProm();
 }
