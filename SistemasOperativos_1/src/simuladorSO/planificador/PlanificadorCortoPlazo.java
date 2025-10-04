@@ -8,6 +8,7 @@ package simuladorSO.planificador;
  *
  * @author obelm
  */
-public interface PlanificadorCortoPlazo {
-    
+public interface PlanificadorCortoPlazo extends Planificador {
+    void reordenarColas(long ciclo); PoliticaPlanificacion politica();
 }
+
