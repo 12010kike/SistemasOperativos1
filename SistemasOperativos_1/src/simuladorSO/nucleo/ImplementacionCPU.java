@@ -13,7 +13,7 @@ public class ImplementacionCPU implements CPU, SuscriptorReloj {
 
     private final BusEventos bus;
     private volatile boolean modoSO = false;
-    private ProcesoPlanificable ejecutando; // null si ociosa
+    private ProcesoPlanificable ejecutando;
 
     public ImplementacionCPU (BusEventos busEventos) {
         this.bus = busEventos;
@@ -39,7 +39,7 @@ public class ImplementacionCPU implements CPU, SuscriptorReloj {
         ProcesoPlanificable p;
         synchronized (this) { p = ejecutando; }
         if (p != null) {
-            p.ejecutarUnCiclo(ciclo); // la lógica PC/MAR/IO se implementará en PASO 2
+            p.ejecutarUnCiclo(ciclo); 
         }
     }
 
