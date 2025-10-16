@@ -8,7 +8,7 @@ package simuladorSO.modelo;
  *
  * @author eabdf
  */
-public interface ProcesoPlanificable {
+public interface ProcesoPlanificable extends PCBVista {
     void ejecutarUnCiclo(long ciclo); 
     boolean debeSolicitarES(long ciclo); 
     boolean completo();
