@@ -4,39 +4,42 @@
  */
 package simuladorSO;
 
-import simuladorSO.nucleo.*;
-import simuladorSO.modelo.*;
+import simuladorSO.ed.*;
 
 
 public class Main {
 
     public static void main(String[] args) {
-        BusEventos bus = new BusEventosSimple();
-        bus.suscribir(e -> System.out.println(
-            "[" + e.ciclo() + "] " + e.tipo() + " :: " + e.mensaje() + " {" + e.detalles() + "}"
-        ));
+        Cola<Integer> cola = new ColaEnlazada<>();
+        cola.ofrecer(10);
+        cola.ofrecer(20);
+        cola.ofrecer(30);
+        System.out.println("Cola (FIFO): frente=" + cola.ver() + " sacar=" + cola.sacar() + " nuevo frente=" + cola.ver());
+        System.out.println("Tamano=" + cola.tamano() + " vacia=" + cola.vacia());
 
-        Reloj reloj = new ImplementacionReloj();              
-        ImplementacionCPU cpu = new ImplementacionCPU(bus);             
-        reloj.suscribir(cpu);                       
+       
+        ColaDoble<String> colaDoble = new ColaDobleEnlazada<>();
+        colaDoble.agregarPrimero("A");
+       colaDoble.agregarUltimo("B");
+        colaDoble.agregarUltimo("C");
+        System.out.println("Cola Doble: primero=" + colaDoble.verPrimero() + ", ultimo=" + colaDoble.verUltimo());
+        System.out.println("SacarPrimero=" + colaDoble.sacarPrimero() + ", nuevo primero=" + colaDoble.verPrimero());
+        System.out.println("SacarUltimo=" + colaDoble.sacarUltimo() + ", nuevo ultimo=" + colaDoble.verUltimo());
 
-        Despachador desp = new ImplementacionDespachador(cpu, bus);
+      
+        ColaPrioridad<Integer> pq = new ColaPrincipal<>((a, b) -> a - b);
+        pq.insertar(50);
+        pq.insertar(10);
+        pq.insertar(30);
+        pq.insertar(5);
+        System.out.println("Principal: cima=" + pq.cima());
+        System.out.println("Extraer1=" + pq.extraer());
+        System.out.println("Extraer2=" + pq.extraer());
+        System.out.println("Nueva cima=" + pq.cima());
+        pq.reconstruir();
+        System.out.println("Principal tamano final=" + pq.tamano());
 
-        GeneradorProcesos gen = new GeneradorProcesos();
-
-        Proceso p1 = gen.crearManual("P1", 8, TipoProceso.CPU_BOUND, 0, 0, 3, 0);
-
-        desp.despacharACPU(p1, 0);
-
-        reloj.setDuracionTickMs(400); 
-        reloj.iniciar();
-        
-        try {
-            Thread.sleep(3500);
-        } catch (InterruptedException ignored) {}
-
-        reloj.pausar();
-        System.out.println("Fin demo PASO 2. Ciclo = " + reloj.cicloActual());
+       
     }
 }
 
