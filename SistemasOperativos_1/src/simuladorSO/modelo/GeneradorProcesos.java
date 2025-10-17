@@ -12,14 +12,14 @@ public class GeneradorProcesos {
     private long nextPid = 1;
 
     /**
-     * Parametros exactos hechos anualmente 
-     * @param nombre nombre del proceso
-     * @param totalInstr total de instrucciones
-     * @param tipo tipo de proceso (CPU_BOUND o IO_BOUND)
-     * @param ioCadaK si es IO_BOUND, cada cuántos ciclos solicita E/S (0 si no aplica)
-     * @param ioDuraM duración en ciclos de la E/S (0 si no aplica)
-     * @param prioridad prioridad inicial (1..N)
-     * @param cicloLlegada ciclo de llegada a la simulación
+     * Parametros a mano
+     * @param nombre 
+     * @param totalInstr 
+     * @param tipo 
+     * @param ioCadaK 
+     * @param ioDuraM 
+     * @param prioridad 
+     * @param cicloLlegada 
      * @return Proceso creado
      */
     public Proceso crearManual(String nombre, int totalInstr,
@@ -31,10 +31,10 @@ public class GeneradorProcesos {
     }
 
     /**
-     * Crea N procesos aleatorios para pruebas.
-     * @param n cantidad de procesos a generar
-     * @param cicloLlegadaBase ciclo de llegada común para los procesos
-     * @return arreglo de procesos generados (tamaño n o 0)
+     * N procesos aleatorios para pruebas.
+     * @param n 
+     * @param cicloLlegadaBase 
+     * @return 
      */
     public Proceso[] crearAleatorios(int n, long cicloLlegadaBase) {
         if (n <= 0) return new Proceso[0];
@@ -45,13 +45,13 @@ public class GeneradorProcesos {
             long pid = nextPid++;
             String nombre = "P" + pid;
 
-            int total = 5 + (int)(Math.random() * 15); // 5..19 instrucciones
+            int total = 5 + (int)(Math.random() * 15);
 
             boolean esIO = Math.random() < 0.5;
             TipoProceso tipo = esIO ? TipoProceso.IO_BOUND : TipoProceso.CPU_BOUND;
 
-            int ioCadaK = esIO ? (2 + (int)(Math.random() * 4)) : 0; // 2..5
-            int ioDuraM = esIO ? (1 + (int)(Math.random() * 3)) : 0; // 1..3
+            int ioCadaK = esIO ? (2 + (int)(Math.random() * 4)) : 0; 
+            int ioDuraM = esIO ? (1 + (int)(Math.random() * 3)) : 0; 
 
             int prioridad = 1 + (int)(Math.random() * 5); // 1..5
 
