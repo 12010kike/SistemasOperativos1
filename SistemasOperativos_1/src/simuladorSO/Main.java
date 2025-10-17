@@ -4,42 +4,47 @@
  */
 package simuladorSO;
 
-import simuladorSO.ed.*;
+import simuladorSO.planificador.*;
+import simuladorSO.modelo.*;
 
 
 public class Main {
-
     public static void main(String[] args) {
-        Cola<Integer> cola = new ColaEnlazada<>();
-        cola.ofrecer(10);
-        cola.ofrecer(20);
-        cola.ofrecer(30);
-        System.out.println("Cola (FIFO): frente=" + cola.ver() + " sacar=" + cola.sacar() + " nuevo frente=" + cola.ver());
-        System.out.println("Tamano=" + cola.tamano() + " vacia=" + cola.vacia());
+        PlanificadorMLFQ mlfq = new PlanificadorMLFQ(3, new int[]{2, 4, 8}, 6);
 
-       
-        ColaDoble<String> colaDoble = new ColaDobleEnlazada<>();
-        colaDoble.agregarPrimero("A");
-       colaDoble.agregarUltimo("B");
-        colaDoble.agregarUltimo("C");
-        System.out.println("Cola Doble: primero=" + colaDoble.verPrimero() + ", ultimo=" + colaDoble.verUltimo());
-        System.out.println("SacarPrimero=" + colaDoble.sacarPrimero() + ", nuevo primero=" + colaDoble.verPrimero());
-        System.out.println("SacarUltimo=" + colaDoble.sacarUltimo() + ", nuevo ultimo=" + colaDoble.verUltimo());
+        GeneradorProcesos gen = new GeneradorProcesos();
 
-      
-        ColaPrioridad<Integer> pq = new ColaPrincipal<>((a, b) -> a - b);
-        pq.insertar(50);
-        pq.insertar(10);
-        pq.insertar(30);
-        pq.insertar(5);
-        System.out.println("Principal: cima=" + pq.cima());
-        System.out.println("Extraer1=" + pq.extraer());
-        System.out.println("Extraer2=" + pq.extraer());
-        System.out.println("Nueva cima=" + pq.cima());
-        pq.reconstruir();
-        System.out.println("Principal tamano final=" + pq.tamano());
+        ProcesoPlanificable A = gen.crearManual("A", 10, TipoProceso.CPU_BOUND, 0, 0, 0, 0L);
+        ProcesoPlanificable B = gen.crearManual("B", 10, TipoProceso.CPU_BOUND, 0, 0, 0, 0L);
+        ProcesoPlanificable C = gen.crearManual("C", 10, TipoProceso.CPU_BOUND, 0, 0, 0, 0L);
 
-       
+        mlfq.encolar(A, 0);
+        mlfq.encolar(B, 0);
+        mlfq.encolar(C, 0);
+
+        ProcesoPlanificable actual = null;
+        int quantumSimulado = 2;
+
+        for (int ciclo = 0; ciclo < 15; ciclo++) {
+            mlfq.reordenarColas(ciclo);
+
+            if (actual == null) {
+                actual = mlfq.seleccionarSiguiente(ciclo);
+                if (actual == null) {
+                    System.out.println("Ciclo " + ciclo + ": CPU ocioso");
+                    continue;
+                }
+                System.out.println("Ciclo " + ciclo + ": CPU selecciona " + actual.nombre());
+            }
+
+            actual.ejecutarUnCiclo(ciclo);
+
+            if (ciclo % quantumSimulado == quantumSimulado - 1) {
+                mlfq.alVencerQuantum(actual, ciclo);
+                actual = null;
+            }
+        }
+
+        System.out.println("Fin demo MLFQ.");
     }
 }
-
