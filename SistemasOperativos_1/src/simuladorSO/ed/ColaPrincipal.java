@@ -5,11 +5,19 @@
 package simuladorSO.ed;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
+
+import java.util.List;
+import java.util.ArrayList;
+
 /**
  *
  * @author eabdf
  * @param <T>
  */
+
+// Modificado por Santiago. Dejo todos estos comentarios para
+// saber lo que cambié yo del código
+
 public class ColaPrincipal<T> implements ColaPrioridad<T>{
    private Object[] heap = new Object[8];
     private int size = 0;
@@ -88,4 +96,18 @@ public class ColaPrincipal<T> implements ColaPrioridad<T>{
         System.arraycopy(heap, 0, n, 0, size);
         heap = n;
     } 
+// --- INICIO DE MODIFICACIONES PARA LA GUI ---
+    // Documentación: Este método fue añadido para cumplir con el contrato de la GUI.
+    // Proporciona una COPIA de los datos de la cola en un formato estándar (java.util.List)
+    // para que la Vista (la GUI) pueda mostrarlos.
+    public List<T> toList() {
+        List<T> listaParaGUI = new ArrayList<>();
+        // Recorremos el array 'heap' solo hasta el tamaño 'size' actual.
+        for (int i = 0; i < this.size; i++) {
+            // Hacemos el casting a <T> al igual que en el resto de la clase.
+            listaParaGUI.add((T) this.heap[i]);
+        }
+        return listaParaGUI;
+    }
+    // --- FIN DE MODIFICACIONES PARA LA GUI ---
 }

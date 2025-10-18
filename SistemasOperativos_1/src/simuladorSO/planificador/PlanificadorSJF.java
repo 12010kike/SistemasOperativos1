@@ -7,10 +7,18 @@ import java.util.concurrent.Semaphore;
 import simuladorSO.ed.ColaPrioridad;
 import simuladorSO.ed.ColaPrincipal;
 import simuladorSO.modelo.ProcesoPlanificable;
+
+import java.util.List;
+import java.util.ArrayList;
+
 /**
  *
  * @author obelm
  */
+
+// Modificado por Santiago. Dejo todos estos comentarios para
+// saber lo que cambié yo del código
+
 public class PlanificadorSJF implements PlanificadorCortoPlazo {
     private final ColaPrioridad<ProcesoPlanificable> cola =
         new ColaPrincipal<>((a,b) -> Integer.compare(a.instruccionesRestantes(), b.instruccionesRestantes()));
@@ -31,4 +39,35 @@ public class PlanificadorSJF implements PlanificadorCortoPlazo {
     @Override public void reordenarColas(long ciclo) { }
     @Override public void reconfigurar(Object delta) { }
     @Override public PoliticaPlanificacion politica() { return PoliticaPlanificacion.SJF; }
+ // --- INICIO DE MODIFICACIONES PARA LA GUI ---
+    // Documentación: Se implementan los métodos de la interfaz PlanificadorCortoPlazo
+    // para exponer el estado de las colas a la interfaz gráfica.
+
+    @Override
+    public List<ProcesoPlanificable> getColaListos() {
+        // Se utiliza el método toList() de la ColaPrioridad para devolver una copia
+        // de solo lectura de los datos en un formato estándar para la GUI.
+        try {
+            mutex.acquire();
+            return cola.toList();
+        } catch (InterruptedException ignored) {
+            // En caso de error, devolver una lista vacía
+        } finally {
+            mutex.release();
+        }
+        return new ArrayList<>();
+    }
+
+    @Override
+    public List<ProcesoPlanificable> getColaBloqueados() {
+        // Este planificador no gestiona la cola de bloqueados.
+        return new ArrayList<>();
+    }
+
+    @Override
+    public List<ProcesoPlanificable> getColaTerminados() {
+        // Este planificador no gestiona la cola de terminados.
+        return new ArrayList<>();
+    }
+    // --- FIN DE MODIFICACIONES PARA LA GUI ---
 }

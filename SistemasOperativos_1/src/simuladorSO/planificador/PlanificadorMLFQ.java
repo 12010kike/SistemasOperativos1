@@ -7,10 +7,18 @@ import java.util.concurrent.Semaphore;
 import simuladorSO.ed.Cola;
 import simuladorSO.ed.ColaEnlazada;
 import simuladorSO.modelo.ProcesoPlanificable;
+
+import java.util.List;
+import java.util.ArrayList;
+
 /**
  *
  * @author obelm
  */
+
+// Modificado por Santiago. Dejo todos estos comentarios para
+// saber lo que cambié yo del código
+
 public class PlanificadorMLFQ implements PlanificadorCortoPlazo{
     private static final class Entry {
         final ProcesoPlanificable p;
@@ -173,4 +181,41 @@ public class PlanificadorMLFQ implements PlanificadorCortoPlazo{
         if (n >= niveles.length) return niveles.length - 1;
         return n;
     }
+// --- INICIO DE MODIFICACIONES PARA LA GUI ---
+    // Documentación: Se implementan los métodos de la interfaz PlanificadorCortoPlazo
+    // para exponer el estado de las colas a la interfaz gráfica.
+
+    @Override
+    public List<ProcesoPlanificable> getColaListos() {
+        List<ProcesoPlanificable> todosLosListos = new ArrayList<>();
+        try {
+            mutex.acquire();
+            // Recorremos cada cola de nivel
+            for (Cola<Entry> colaDeNivel : niveles) {
+                // Como la cola es iterable, podemos recorrerla para obtener sus elementos
+                // sin modificarlos (sin usar sacar()).
+                for (Entry e : colaDeNivel) {
+                    todosLosListos.add(e.p); // Añadimos el proceso del Entry a nuestra lista final
+                }
+            }
+        } catch (InterruptedException ignored) {
+            // En caso de error, devolver una lista vacía
+        } finally {
+            mutex.release();
+        }
+        return todosLosListos;
+    }
+
+    @Override
+    public List<ProcesoPlanificable> getColaBloqueados() {
+        // Este planificador no gestiona la cola de bloqueados.
+        return new ArrayList<>();
+    }
+
+    @Override
+    public List<ProcesoPlanificable> getColaTerminados() {
+        // Este planificador no gestiona la cola de terminados.
+        return new ArrayList<>();
+    }
+    // --- FIN DE MODIFICACIONES PARA LA GUI ---
 }

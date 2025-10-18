@@ -3,13 +3,23 @@
  * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
  */
 package simuladorSO.ed;
+import java.util.List;
+import java.util.ArrayList;
+
 import java.util.Iterator;
 import java.util.NoSuchElementException;
+
+
 /**
  *
  * @author eabdf
  * @param <T>
  */
+
+// Modificado por Santiago. Dejo todos estos comentarios para
+// saber lo que cambié yo del código
+
+
 public class ColaEnlazada<T> implements Cola<T> {
   private static final class Nodo<E> {
         E v; Nodo<E> prev, next;
@@ -54,4 +64,27 @@ public class ColaEnlazada<T> implements Cola<T> {
             }
         };
     }  
+    // --- INICIO DE MODIFICACIONES PARA LA GUI ---
+    // Este método fue añadido para cumplir con el contrato de la GUI.
+    // Proporciona una COPIA de los datos de la cola en un formato estándar (java.util.List)
+    // para que la Vista (la GUI) pueda mostrarlos sin conocer la implementación interna de esta cola.
+    // La lógica principal del simulador NO utiliza este método para gestionar el estado.
+    
+    public List<T> toList() {
+        // 1. Se crea el ArrayList temporal que servirá como contenedor de transporte.
+        List<T> listaParaGUI = new ArrayList<>();
+        
+        // 2. Se recorre la estructura de datos interna (la lista enlazada) desde la cabeza a la cola.
+        Nodo<T> actual = this.head;
+        while (actual != null) {
+            // 3. Se añade cada elemento a la lista temporal.
+            listaParaGUI.add(actual.v);
+            actual = actual.next;
+        }
+        
+        // 4. Se devuelve la copia en formato estándar.
+        return listaParaGUI;
+    }
+
+    // --- FIN DE MODIFICACIONES PARA LA GUI ---
 }
