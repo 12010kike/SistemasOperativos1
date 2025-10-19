@@ -132,16 +132,10 @@ public void setControlador(ControladorSimulador controlador) {
     }
 
     @Override
-    public void actualizarMetricas(InstantaneaMetricas snap) {
+    public void actualizarMetricas(long cicloActual) { // <-- Acepta un 'long'
         SwingUtilities.invokeLater(() -> {
-            // Cuando la clase InstantaneaMetricas esté lista, podrás usar más datos.
-            // Por ahora, solo actualizamos el ciclo si el snap no es nulo.
-            if (snap != null) {
-                lblCicloActual.setText("Ciclo: " + snap.ciclo());
-            } else {
-                // Si es nulo, podemos intentar al menos limpiar o poner un valor por defecto.
-                // Opcional: lblCicloActual.setText("Ciclo: N/A");
-            }
+            // Ahora actualiza directamente el label con el número de ciclo.
+            lblCicloActual.setText("Ciclo: " + cicloActual);
         });
     }
 

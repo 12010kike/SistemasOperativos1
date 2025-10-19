@@ -11,6 +11,7 @@ import simuladorSO.planificador.PlanificadorCortoPlazo;
 import simuladorSO.modelo.ProcesoPlanificable;
 import simuladorSO.nucleo.EventoSistema;
 import simuladorSO.metrica.InstantaneaMetricas;
+import java.util.ArrayList;
 
 // --- CORRECCIÓN: Imports necesarios para la creación de procesos ---
 import simuladorSO.modelo.GeneradorProcesos;
@@ -33,6 +34,7 @@ public class ControladorReal implements ControladorSimulador {
     private volatile PlanificadorCortoPlazo planificadorActual;
     private volatile boolean corriendo = false;
     private volatile long tickMs = 500;
+    private final List<ProcesoPlanificable> colaTerminados = new ArrayList<>();
     
     // --- CORRECCIÓN: Se añade la variable para el Generador de Procesos ---
     private final GeneradorProcesos generador;
@@ -65,12 +67,16 @@ public class ControladorReal implements ControladorSimulador {
         List<ProcesoPlanificable> bloqueados = planificadorActual.getColaBloqueados();
         List<ProcesoPlanificable> terminados = planificadorActual.getColaTerminados();
         
-        señalizador.refrescarColas(listos, bloqueados, terminados, null, null);
+        señalizador.refrescarColas(listos, bloqueados, this.colaTerminados, null, null);
 
         // Se usa 'null' para las métricas temporalmente para evitar errores de compilación.
-        señalizador.actualizarMetricas(null);
+        señalizador.actualizarMetricas(cicloActual);
     }
-    
+    public void notificarProcesoTerminado(ProcesoPlanificable p) {
+    if (p != null) {
+        this.colaTerminados.add(p);
+    }
+}
     // --- MÉTODOS DE LA INTERFAZ ControladorSimulador ---
     
     @Override

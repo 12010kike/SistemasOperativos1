@@ -8,6 +8,10 @@ package simuladorSO.modelo;
  *
  * @author obelm
  */
+
+// Modificado por Santiago. Dejo todos estos comentarios para
+// saber lo que cambié yo del código
+
 public class Proceso implements ProcesoPlanificable {
     private final PCB pcb;
     private int quantumConsumido = 0;
@@ -66,4 +70,21 @@ public class Proceso implements ProcesoPlanificable {
     @Override public int ioDuraM() { return pcb.ioDuraM(); }
     @Override public int prioridad() { return pcb.prioridad(); }
     @Override public long cicloLlegada() { return pcb.cicloLlegada(); }
+    
+    
+    // --- INICIO DE MODIFICACIÓN PARA LA GUI ---
+    // Documentación: Se añade el método toString() para proporcionar una representación
+    // legible del proceso en los componentes de la interfaz gráfica, como JList.
+    
+    /**
+     * Devuelve una representación en texto del proceso, ideal para la GUI.
+     * Este método es llamado automáticamente por los componentes de Swing como JList.
+     * @return Un String con el formato "PID: [id] - [nombre] (Rest: [instrucciones])".
+     */
+    @Override
+    public String toString() {
+        return "PID: " + pid() + " - " + nombre() + 
+               " (Rest: " + instruccionesRestantes() + ")";
+    }
+    // --- FIN DE MODIFICACIÓN PARA LA GUI ---
 }

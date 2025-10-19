@@ -42,7 +42,7 @@ public interface Señalizador {
 
     // Los siguientes métodos se mantienen según el diseño original de tu equipo.
     void empujarEvento(EventoSistema t, String msg, String det);
-    void actualizarMetricas(InstantaneaMetricas snap);
+    void actualizarMetricas(long cicloActual);
     void refrescarConfig();
 }
 

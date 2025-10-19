@@ -1,7 +1,3 @@
-/*
- * Click nbfs://nbhostSystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Main.java to edit this template
- */
 package simuladorSO;
 
 // --- Importaciones de Lógica ---
@@ -17,20 +13,18 @@ import javax.swing.SwingUtilities;
 // --- Importaciones para gestionar los planificadores ---
 import java.util.Map;
 import java.util.HashMap;
-import java.util.List;
 
 public class Main {
 
     public static void main(String[] args) {
-        // Es una buena práctica ejecutar la GUI en el hilo de eventos de Swing (EDT)
         SwingUtilities.invokeLater(() -> {
 
-            // --- 1: CREAR LOS COMPONENTES CENTRALES DE LA LÓGICA ---
+            // --- 1: CREAR COMPONENTES CENTRALES ---
             BusEventos bus = new BusEventosSimple();
             CPU cpu = new ImplementacionCPU(bus);
             Despachador despachador = new ImplementacionDespachador(cpu, bus);
 
-            // --- 2: CREAR TODAS LAS POLÍTICAS DE PLANIFICACIÓN ---
+            // --- 2: CREAR PLANIFICADORES ---
             Map<String, PlanificadorCortoPlazo> planificadores = new HashMap<>();
             planificadores.put("FCFS", new PlanificadorFCFS());
             planificadores.put("SJF", new PlanificadorSJF());
@@ -39,35 +33,54 @@ public class Main {
             planificadores.put("Prioridades", new PlanificadorPrioridadPreemption());
             planificadores.put("MLFQ", new PlanificadorMLFQ(3, new int[]{2, 4, 8}, 20));
             
-            // Seleccionamos un planificador inicial (por ejemplo, FCFS)
-            PlanificadorCortoPlazo planificadorActual = planificadores.get("FCFS");
+            PlanificadorCortoPlazo planificadorInicial = planificadores.get("FCFS");
 
-            // --- 3: CREAR LA VISTA (LA GUI) ---
+            // --- 3: CREAR VISTA Y GENERADOR DE PROCESOS ---
             SimuladorGUI vista = new SimuladorGUI();
             GeneradorProcesos generador = new GeneradorProcesos();
 
-            // --- 4: CREAR EL CONTROLADOR QUE UNE LA VISTA Y LA LÓGICA ---
-            ControladorReal controlador = new ControladorReal(vista, cpu, planificadorActual, despachador, planificadores, generador);             // --- 5: CONECTAR LAS PIEZAS ---
-            vista.setControlador(controlador); // La vista necesita saber quién es el controlador
-            vista.configurarListeners();   // Activamos los botones para que hablen con el controlador
+            // --- 4: CREAR CONTROLADOR ---
+            ControladorReal controlador = new ControladorReal(vista, cpu, planificadorInicial, despachador, planificadores, generador);
+            
+            // --- 5: CONECTAR PIEZAS ---
+            vista.setControlador(controlador);
+            vista.configurarListeners();
 
-            // --- 6: INICIAR EL HILO DE SIMULACIÓN (EL RELOJ) ---
-Thread hiloSimulacion = new Thread(() -> {
+            // --- 6: INICIAR HILO DE SIMULACIÓN (EL RELOJ) ---
+            Thread hiloSimulacion = new Thread(() -> {
                 long ciclo = 0;
-                while (true) { 
+                while (true) {
                     if (controlador.estaCorriendo()) {
                         
-                        // --- LÓGICA DE UN CICLO DEL SIMULADOR ---
+                        // --- INICIO DE LA LÓGICA DE CICLO CON FINALIZACIÓN ---
                         
-                        // ... (El resto de la lógica del ciclo se queda igual) ...
+                        // 1. Despachar si la CPU está vacía.
+                        if (cpu.ejecutando() == null) {
+                            ProcesoPlanificable proximo = controlador.getPlanificadorActual().seleccionarSiguiente(ciclo);
+                            if (proximo != null) {
+                                despachador.despacharACPU(proximo, ciclo);
+                            }
+                        }
                         
-                        // --- CORRECCIÓN PARA EL ERROR DE LAMBDA ---
-                        // 1. Creamos una copia 'final' del valor actual de 'ciclo'
+                        // 2. Ejecutar un ciclo de CPU.
+                        cpu.paso(ciclo);
+                        
+                        // 3. Verificar si el proceso en ejecución ha terminado.
+                        ProcesoPlanificable procesoActual = cpu.ejecutando();
+                        if (procesoActual != null && procesoActual.completo()) {
+                            ProcesoPlanificable terminado = despachador.expropiarActual(ciclo);
+                            
+                            // Notificamos al controlador que un proceso ha terminado.
+                            controlador.notificarProcesoTerminado(terminado);
+                            
+                            System.out.println("Proceso " + terminado.nombre() + " ha terminado.");
+                        }
+                        
+                        // 4. Actualizar la GUI.
                         final long cicloActualParaGUI = ciclo;
-                        
-                        // 2. Usamos esa copia final dentro de la lambda
                         SwingUtilities.invokeLater(() -> controlador.actualizarVistaCicloACiclo(cicloActualParaGUI));
-                        // --- FIN DE LA CORRECCIÓN ---
+                        
+                        // --- FIN DE LA LÓGICA DE CICLO ---
 
                         ciclo++;
                     }
@@ -82,8 +95,8 @@ Thread hiloSimulacion = new Thread(() -> {
                 }
             });
 
-            hiloSimulacion.setDaemon(true); // El hilo termina si la aplicación se cierra
-            hiloSimulacion.start();        // ¡Arrancamos el reloj!
+            hiloSimulacion.setDaemon(true);
+            hiloSimulacion.start();
 
             // --- 7: HACER VISIBLE LA APLICACIÓN ---
             vista.setVisible(true);
