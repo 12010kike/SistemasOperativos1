@@ -19,4 +19,5 @@ public interface ControladorSimulador {
     void generarProcesosAleatorios(int cantidad);
     void cargarConfig(String path); 
     void guardarConfig(String path);
+    void generarProcesoDePrueba(); 
 }

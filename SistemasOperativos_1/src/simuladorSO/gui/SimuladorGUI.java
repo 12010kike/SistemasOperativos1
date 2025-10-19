@@ -45,13 +45,30 @@ public void setControlador(ControladorSimulador controlador) {
                 controlador.setPolitica(algoritmoSeleccionado);
             }
         });
-        
-        // Aquí añadiríamos los listeners para los botones de Play/Pause
-        // Ejemplo (necesitarás añadir los botones en el diseñador):
-        // btnPlay.addActionListener(e -> { if (controlador != null) controlador.play(); });
-        // btnPause.addActionListener(e -> { if (controlador != null) controlador.pause(); });
-    }
+         // Documentación: Se añaden los listeners para los botones de control de la simulación.
 
+        // Listener para el botón Iniciar
+        btnIniciar.addActionListener(e -> {
+            if (controlador != null) {
+                controlador.play();
+            }
+        });
+
+        // Listener para el botón Pausar
+        btnPausar.addActionListener(e -> {
+            if (controlador != null) {
+                controlador.pause();
+            }
+        });
+                btnCrearProceso.addActionListener(e -> {
+            if (controlador != null) {
+                // Le pedimos al controlador que genere un nuevo proceso de prueba.
+                // Usaremos un método que AÚN NO EXISTE, pero que crearemos en el siguiente paso.
+                controlador.generarProcesoDePrueba(); 
+            }
+        });
+        // --- FIN DE CÓDIGO NUEVO ---
+    }
     /**
      * Inicializa los DefaultListModel y los asigna a las JList.
      * Esto nos permite añadir y quitar elementos de las listas dinámicamente.
@@ -148,6 +165,9 @@ public void setControlador(ControladorSimulador controlador) {
         panelControl = new javax.swing.JPanel();
         jLabel1 = new javax.swing.JLabel();
         comboAlgoritmos = new javax.swing.JComboBox<>();
+        btnIniciar = new javax.swing.JButton();
+        btnPausar = new javax.swing.JButton();
+        btnCrearProceso = new javax.swing.JButton();
         panelDerecho = new javax.swing.JPanel();
         jPanel1 = new javax.swing.JPanel();
         lblProcesoActual = new javax.swing.JLabel();
@@ -171,16 +191,31 @@ public void setControlador(ControladorSimulador controlador) {
 
         comboAlgoritmos.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "FCFS", "SJF", "SRT", "Round Robin", "Planificación por Prioridad", "MLFQ", " " }));
 
+        btnIniciar.setText("Iniciar");
+
+        btnPausar.setText("Pausar");
+
+        btnCrearProceso.setText("Crear proceso");
+
         javax.swing.GroupLayout panelControlLayout = new javax.swing.GroupLayout(panelControl);
         panelControl.setLayout(panelControlLayout);
         panelControlLayout.setHorizontalGroup(
             panelControlLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(panelControlLayout.createSequentialGroup()
                 .addGap(24, 24, 24)
-                .addComponent(jLabel1, javax.swing.GroupLayout.PREFERRED_SIZE, 69, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(18, 18, 18)
-                .addComponent(comboAlgoritmos, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap(358, Short.MAX_VALUE))
+                .addGroup(panelControlLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addComponent(btnPausar)
+                    .addGroup(panelControlLayout.createSequentialGroup()
+                        .addComponent(jLabel1, javax.swing.GroupLayout.PREFERRED_SIZE, 69, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(18, 18, 18)
+                        .addComponent(comboAlgoritmos, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(69, 69, 69)
+                        .addComponent(btnIniciar)))
+                .addContainerGap(217, Short.MAX_VALUE))
+            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, panelControlLayout.createSequentialGroup()
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addComponent(btnCrearProceso)
+                .addGap(202, 202, 202))
         );
         panelControlLayout.setVerticalGroup(
             panelControlLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -188,8 +223,13 @@ public void setControlador(ControladorSimulador controlador) {
                 .addContainerGap()
                 .addGroup(panelControlLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jLabel1)
-                    .addComponent(comboAlgoritmos, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addContainerGap(78, Short.MAX_VALUE))
+                    .addComponent(comboAlgoritmos, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(btnIniciar))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(btnPausar)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(btnCrearProceso)
+                .addContainerGap(20, Short.MAX_VALUE))
         );
 
         getContentPane().add(panelControl, java.awt.BorderLayout.NORTH);
@@ -243,7 +283,7 @@ public void setControlador(ControladorSimulador controlador) {
             .addGroup(jPanel2Layout.createSequentialGroup()
                 .addContainerGap()
                 .addComponent(lblCicloActual)
-                .addContainerGap(64, Short.MAX_VALUE))
+                .addContainerGap(63, Short.MAX_VALUE))
         );
 
         panelDerecho.add(jPanel2, java.awt.BorderLayout.CENTER);
@@ -330,6 +370,9 @@ public void setControlador(ControladorSimulador controlador) {
     
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JTextArea areaLog;
+    private javax.swing.JButton btnCrearProceso;
+    private javax.swing.JButton btnIniciar;
+    private javax.swing.JButton btnPausar;
     private javax.swing.JComboBox<String> comboAlgoritmos;
     private javax.swing.JLabel jLabel1;
     private javax.swing.JPanel jPanel1;

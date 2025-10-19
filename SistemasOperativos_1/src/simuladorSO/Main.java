@@ -44,11 +44,10 @@ public class Main {
 
             // --- 3: CREAR LA VISTA (LA GUI) ---
             SimuladorGUI vista = new SimuladorGUI();
+            GeneradorProcesos generador = new GeneradorProcesos();
 
             // --- 4: CREAR EL CONTROLADOR QUE UNE LA VISTA Y LA LÓGICA ---
-            ControladorReal controlador = new ControladorReal(vista, cpu, planificadorActual, despachador, planificadores);
-
-            // --- 5: CONECTAR LAS PIEZAS ---
+            ControladorReal controlador = new ControladorReal(vista, cpu, planificadorActual, despachador, planificadores, generador);             // --- 5: CONECTAR LAS PIEZAS ---
             vista.setControlador(controlador); // La vista necesita saber quién es el controlador
             vista.configurarListeners();   // Activamos los botones para que hablen con el controlador
 
