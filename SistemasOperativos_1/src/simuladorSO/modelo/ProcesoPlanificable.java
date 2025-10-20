@@ -16,4 +16,5 @@ public interface ProcesoPlanificable extends PCBVista {
     void reiniciarQuantum(); 
     int quantumConsumido(); 
     void setPrioridad(int p);
+   
 }

@@ -1,4 +1,4 @@
-package simuladorSO;
+/*package simuladorSO;
 
 // --- Importaciones de Lógica ---
 import simuladorSO.nucleo.*;
@@ -156,3 +156,182 @@ public class Main {
     }
 }
 */
+
+
+/*package simuladorSO;
+
+import simuladorSO.planificador.*;
+import simuladorSO.modelo.*;
+import simuladorSO.nucleo.GestorEntradaSalida;
+
+public class Main {
+    public static void main(String[] args) {
+        // Planificador de corto plazo (usa FCFS para la demo)
+        PlanificadorCortoPlazo plan = new PlanificadorFCFS();
+
+        // Logger mínimo para ver el timeline
+        GestorEntradaSalida.Logger logger = (ciclo, evento, detalle) ->
+                System.out.println("[" + ciclo + "] " + evento + " :: " + detalle);
+
+        // Gestor de E/S
+        GestorEntradaSalida gestor = new GestorEntradaSalida(plan, logger);
+        gestor.setMsPorCiclo(60); // 60ms por ciclo para notar la E/S
+
+        // Generador de procesos (usa tu clase real)
+        GeneradorProcesos gen = new GeneradorProcesos();
+
+        // P1 = CPU-bound puro (no pide E/S)
+        ProcesoPlanificable P1 = gen.crearManual("CPU_Puro", 12,
+                TipoProceso.CPU_BOUND, 0, 0, 1, 0L);
+
+        // P2 = I/O-bound frecuente: cada 2 ciclos pide E/S que dura 3
+        ProcesoPlanificable P2 = gen.crearManual("IO_Frecuente", 14,
+                TipoProceso.IO_BOUND, 2, 3, 1, 0L);
+
+        plan.encolar(P1, 0);
+        plan.encolar(P2, 0);
+
+        ProcesoPlanificable corriendo = null;
+        int ciclosMax = 26;
+        long ciclo = 0;
+
+        while (ciclo < ciclosMax) {
+            if (corriendo == null) {
+                corriendo = plan.seleccionarSiguiente(ciclo);
+                if (corriendo == null) {
+                    System.out.println("Ciclo " + ciclo + ": CPU ocioso");
+                    ciclo++;
+                    dormir(50);
+                    continue;
+                }
+                System.out.println("Ciclo " + ciclo + ": CPU selecciona " + corriendo.nombre()
+                        + " (pid=" + corriendo.pid() + ")");
+                corriendo.setEstado(EstadoProceso.RUNNING);
+            }
+
+            // Ejecuta 1 instrucción
+            corriendo.ejecutarUnCiclo(ciclo);
+
+            // Terminó
+            if (corriendo.completo()) {
+                System.out.println("Ciclo " + ciclo + ": " + corriendo.nombre() + " TERMINADO");
+                corriendo.setEstado(EstadoProceso.TERMINATED);
+                corriendo = null;
+                ciclo++;
+                continue;
+            }
+
+            // ¿Debe ir a E/S?
+            if (corriendo.debeSolicitarES(ciclo)) {
+                System.out.println("Ciclo " + ciclo + ": " + corriendo.nombre() + " solicita E/S");
+                gestor.solicitarES(corriendo, ciclo);
+                corriendo = null; // CPU libre
+                ciclo++;
+                continue;
+            }
+
+            ciclo++;
+            dormir(50);
+        }
+
+        gestor.apagar();
+        System.out.println("Fin demo PASO 5.");
+    }
+
+    private static void dormir(long ms) {
+        try { Thread.sleep(ms); } catch (InterruptedException ignored) {}
+    }
+}
+*/
+
+
+package simuladorSO;
+
+import simuladorSO.modelo.*;
+import simuladorSO.planificador.*;
+import simuladorSO.nucleo.*;
+
+public class Main {
+
+    public static void main(String[] args) {
+        // Corto plazo (puedes cambiar a RR/MLFQ)
+        PlanificadorCortoPlazo corto = new PlanificadorFCFS();
+
+        // Memoria pequeña para forzar suspensiones
+        GestorMemoria mem = new ImplementacionGestorMemoria(20);
+
+        // Mediano y Largo plazo (coordinados)
+        ImplementacionPMP mediano = new  ImplementacionPMP();
+         ImplementacionPLP  largo   = new  ImplementacionPLP(mem, corto, mediano,
+                (c,e,d) -> System.out.println("[" + c + "] " + e + " :: " + d));
+
+        // E/S (opcional para ver bloqueos reales)
+        GestorEntradaSalida gestorES = new GestorEntradaSalida(corto,
+                (c,e,d) -> System.out.println("[" + c + "] " + e + " :: " + d));
+        gestorES.setMsPorCiclo(50);
+
+        GeneradorProcesos gen = new GeneradorProcesos();
+
+        ProcesoPlanificable P1 = gen.crearManual("CPU_15", 15, TipoProceso.CPU_BOUND, 0, 0, 1, 0L);
+        ProcesoPlanificable P2 = gen.crearManual("IO_20",  20, TipoProceso.IO_BOUND, 3, 4, 1, 0L);
+        ProcesoPlanificable P3 = gen.crearManual("MIX_18", 18, TipoProceso.IO_BOUND, 5, 3, 1, 0L);
+
+        long ciclo = 0L;
+       
+        largo.admitir(P1, ciclo);
+        largo.admitir(P2, ciclo);
+        largo.admitir(P3, ciclo); 
+
+        ProcesoPlanificable corriendo = null;
+        int max = 90;
+
+        while (ciclo < max) {
+            
+            if (corriendo == null) {
+                corriendo = corto.seleccionarSiguiente(ciclo);
+                if (corriendo == null) { ciclo++; dormir(30); continue; }
+                System.out.println("Ciclo " + ciclo + ": CPU selecciona " + corriendo.nombre());
+                corriendo.setEstado(EstadoProceso.RUNNING);
+            }
+
+            
+            corriendo.ejecutarUnCiclo(ciclo);
+
+            if (corriendo.completo()) {
+                System.out.println("Ciclo " + ciclo + ": " + corriendo.nombre() + " TERMINADO");
+                corriendo.setEstado(EstadoProceso.TERMINATED);
+                mem.sacarDeMemoria(corriendo);   
+                corriendo = null;
+                largo.intentarReingresos(ciclo);  
+                ciclo++; dormir(25); continue;
+            }
+
+            if (corriendo.debeSolicitarES(ciclo)) {
+                System.out.println("Ciclo " + ciclo + ": " + corriendo.nombre() + " solicita E/S");
+                corriendo.setEstado(EstadoProceso.BLOCKED);
+                mediano.registrarBloqueado(corriendo, ciclo);
+                gestorES.solicitarES(corriendo, ciclo); 
+
+                
+                if (mem.capacidad() - mem.usado() < 3) {
+                    ProcesoPlanificable susp = mediano.seleccionarParaSuspender(ciclo);
+                    if (susp != null) mem.sacarDeMemoria(susp);
+                }
+                largo.intentarReingresos(ciclo);
+
+                corriendo = null;
+                ciclo++; dormir(25); continue;
+            }
+
+            ciclo++; dormir(20);
+        }
+
+        gestorES.apagar();
+        System.out.println("Fin demo PASO 6.");
+    }
+
+    private static void dormir(long ms) {
+        try { Thread.sleep(ms); } catch (InterruptedException ignored) {}
+    }
+}
+
