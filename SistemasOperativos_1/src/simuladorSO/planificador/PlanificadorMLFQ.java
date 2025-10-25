@@ -20,6 +20,9 @@ import java.util.ArrayList;
 // saber lo que cambié yo del código
 
 public class PlanificadorMLFQ implements PlanificadorCortoPlazo{
+    private final java.util.LinkedList<simuladorSO.modelo.ProcesoPlanificable> bloqueados = new java.util.LinkedList<>();
+    private final java.util.LinkedList<simuladorSO.modelo.ProcesoPlanificable> terminados = new java.util.LinkedList<>();
+
     private static final class Entry {
         final ProcesoPlanificable p;
         long tArribo;
@@ -66,38 +69,41 @@ public class PlanificadorMLFQ implements PlanificadorCortoPlazo{
     public void encolar(ProcesoPlanificable p, long ciclo) {
         try {
             mutex.acquire();
+            bloqueados.remove(p);        
             niveles[0].ofrecer(new Entry(p, ciclo, 0));
         } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
         } finally {
             mutex.release();
         }
     }
+
 
     @Override
     public ProcesoPlanificable seleccionarSiguiente(long ciclo) {
         try {
             mutex.acquire();
-
-            aplicarEnvejecimiento(ciclo); // Revisar si alguien debe subir de nivel
-
+            aplicarEnvejecimiento(ciclo);
             for (int lvl = 0; lvl < niveles.length; lvl++) {
                 Entry e = niveles[lvl].sacar();
                 if (e != null) {
-                    e.nivel = lvl;               
-                    e.p.setPrioridad(lvl);         
-                    e.p.reiniciarQuantum();        
-                    e.tArribo = ciclo;             
+                    bloqueados.remove(e.p);  // ← asegurar que no quede listado como bloqueado
+                    e.nivel = lvl;
+                    e.p.setPrioridad(lvl);
+                    e.p.reiniciarQuantum();
+                    e.tArribo = ciclo;
                     return e.p;
                 }
             }
             return null;
-
         } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
             return null;
         } finally {
             mutex.release();
         }
     }
+
 
     @Override
     public void alVencerQuantum(ProcesoPlanificable c, long ciclo) {
@@ -211,11 +217,25 @@ public class PlanificadorMLFQ implements PlanificadorCortoPlazo{
         // Este planificador no gestiona la cola de bloqueados.
         return new ArrayList<>();
     }
+    
 
     @Override
     public List<ProcesoPlanificable> getColaTerminados() {
         // Este planificador no gestiona la cola de terminados.
         return new ArrayList<>();
     }
-    // --- FIN DE MODIFICACIONES PARA LA GUI ---
+    
+    @Override
+    public void registrarProcesoBloqueado(ProcesoPlanificable p) {
+        if (p == null) return;
+        try {
+            mutex.acquire();
+            bloqueados.remove(p);
+            bloqueados.addLast(p);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        } finally {
+            mutex.release();
+        }
+    }
 }

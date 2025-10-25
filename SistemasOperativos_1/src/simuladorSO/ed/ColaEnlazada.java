@@ -85,6 +85,59 @@ public class ColaEnlazada<T> implements Cola<T> {
         // 4. Se devuelve la copia en formato estándar.
         return listaParaGUI;
     }
+    /**
+     * Verifica si un elemento específico se encuentra en la cola.
+     * @param elemento El elemento a buscar.
+     * @return true si el elemento está en la cola, false en caso contrario.
+     */
+    public boolean contiene(T elemento) {
+        Nodo<T> actual = this.head; // CORREGIDO: se usa 'head' en lugar de 'frente'
+        while (actual != null) {
+            // CORREGIDO: se usa 'actual.v' en lugar de 'actual.datos'
+            if (actual.v.equals(elemento)) {
+                return true;
+            }
+            actual = actual.next; // CORREGIDO: se usa 'next' en lugar de 'siguiente'
+        }
+        return false;
+    }
 
-    // --- FIN DE MODIFICACIONES PARA LA GUI ---
+    /**
+    * Remueve la primera ocurrencia de un elemento específico de la cola.
+    * @param elemento El elemento a remover.
+    */
+    public void remover(T elemento) {
+        if (head == null) return; // CORREGIDO: se usa 'head'
+
+        // Caso 1: El elemento a remover es el primero
+        if (head.v.equals(elemento)) { // CORREGIDO: se usa 'head.v'
+            head = head.next; // CORREGIDO: se usa 'next'
+            if (head != null) {
+                head.prev = null;
+            } else {
+                tail = null; // CORREGIDO: se usa 'tail'
+            }
+            size--;
+            return;
+        }
+
+        // Caso 2: El elemento está en medio o al final
+        Nodo<T> actual = this.head;
+        while (actual.next != null) { // CORREGIDO: se usa 'next'
+            if (actual.next.v.equals(elemento)) { // CORREGIDO: se usa '.v'
+                // Si el nodo a borrar es el último (tail)
+                if (actual.next == tail) {
+                    tail = actual;
+                }
+                actual.next = actual.next.next;
+                if (actual.next != null) {
+                    actual.next.prev = actual;
+                }
+                size--;
+                return;
+            }
+            actual = actual.next; // CORREGIDO: se usa 'next'
+        }
+    }
+    // --- FIN DE CÓDIGO CORREGIDO ---
 }

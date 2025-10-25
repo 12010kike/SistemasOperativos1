@@ -1,15 +1,13 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package simuladorSO.planificador;
+
 import java.util.concurrent.Semaphore;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.LinkedList;
+
 import simuladorSO.ed.Cola;
 import simuladorSO.ed.ColaEnlazada;
 import simuladorSO.modelo.ProcesoPlanificable;
-
-import java.util.List;
-import java.util.ArrayList;
 
 /**
  *
@@ -18,19 +16,33 @@ import java.util.ArrayList;
 // Modificado por Santiago. Dejo todos estos comentarios para
 // saber lo que cambié yo del código
 
-public class PlanificadorRR implements PlanificadorCortoPlazo{
+public class PlanificadorRR implements PlanificadorCortoPlazo {
+
     private final Cola<ProcesoPlanificable> cola = new ColaEnlazada<>();
     private final Semaphore mutex = new Semaphore(1, true);
-    private int quantum = 3; 
+    private int quantum = 3;
+
+    // --- Colas de apoyo para la GUI ---
+    private final ArrayList<ProcesoPlanificable> listosSnapshot = new ArrayList<>();
+    private final LinkedList<ProcesoPlanificable> bloqueados    = new LinkedList<>();
+    private final LinkedList<ProcesoPlanificable> terminados    = new LinkedList<>();
 
     public void setQuantum(int nuevo) { if (nuevo > 0) this.quantum = nuevo; }
+    public int getQuantum() { return quantum; }
+
 
     @Override
     public void encolar(ProcesoPlanificable p, long ciclo) {
+        if (p == null) return;
         try {
             mutex.acquire();
+            // si vuelve de E/S, ya no está bloqueado
+            bloqueados.remove(p);
             cola.ofrecer(p);
+            // snapshot para la GUI
+            listosSnapshot.add(p);
         } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
         } finally {
             mutex.release();
         }
@@ -40,8 +52,16 @@ public class PlanificadorRR implements PlanificadorCortoPlazo{
     public ProcesoPlanificable seleccionarSiguiente(long ciclo) {
         try {
             mutex.acquire();
-            return cola.sacar();
+            ProcesoPlanificable x = cola.sacar();
+            if (x != null) {
+                // sale de listos ⇒ quítalo del snapshot
+                listosSnapshot.remove(x);
+                // por si quedaba marcado como bloqueado
+                bloqueados.remove(x);
+            }
+            return x;
         } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
             return null;
         } finally {
             mutex.release();
@@ -54,58 +74,56 @@ public class PlanificadorRR implements PlanificadorCortoPlazo{
             System.out.println("[RR] Quantum expiró para " + c.nombre() +
                                " (q=" + quantum + ") en ciclo " + ciclo);
             c.reiniciarQuantum();
-            encolar(c, ciclo);
+            encolar(c, ciclo); // vuelve a listos
         }
     }
 
     @Override
     public void alArribar(ProcesoPlanificable p, ProcesoPlanificable corriendo, long ciclo) {
-        
+        // RR no expropia por llegada; noop
     }
 
-    @Override
-    public void reordenarColas(long ciclo) {  }
+    @Override public void reordenarColas(long ciclo) { }
+    @Override public void reconfigurar(Object delta) { if (delta instanceof Integer q) setQuantum(q); }
+    @Override public PoliticaPlanificacion politica() { return PoliticaPlanificacion.RR; }
 
+    // --- Requerido por PlanificadorCortoPlazo: registrar bloqueados ---
     @Override
-    public void reconfigurar(Object delta) {
-        if (delta instanceof Integer q) setQuantum(q);
-    }
-
-    @Override
-    public PoliticaPlanificacion politica() {
-        return PoliticaPlanificacion.RR;
-    }
-// --- INICIO DE MODIFICACIONES PARA LA GUI ---
-    // Documentación: Se implementan los métodos de la interfaz PlanificadorCortoPlazo
-    // para exponer el estado de las colas a la interfaz gráfica.
-
-    @Override
-    public List<ProcesoPlanificable> getColaListos() {
-        // Se utiliza el método toList() de la ColaEnlazada para devolver una copia
-        // de solo lectura de los datos en un formato estándar para la GUI.
+    public void registrarProcesoBloqueado(ProcesoPlanificable p) {
+        if (p == null) return;
         try {
             mutex.acquire();
-            if (cola instanceof ColaEnlazada) {
-                return ((ColaEnlazada<ProcesoPlanificable>) cola).toList();
-            }
+            listosSnapshot.remove(p);      // ya no está en listos
+            bloqueados.remove(p);          // evita duplicados
+            bloqueados.addLast(p);
         } catch (InterruptedException ignored) {
-            // En caso de error, devolver una lista vacía
+            Thread.currentThread().interrupt();
         } finally {
             mutex.release();
         }
-        return new ArrayList<>();
+    }
+
+    // --- Getters para la GUI ---
+    @Override
+    public List<ProcesoPlanificable> getColaListos() {
+        try {
+            mutex.acquire();
+            return new ArrayList<>(listosSnapshot); // vista estable
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+            return new ArrayList<>();
+        } finally {
+            mutex.release();
+        }
     }
 
     @Override
     public List<ProcesoPlanificable> getColaBloqueados() {
-        // Este planificador no gestiona la cola de bloqueados.
-        return new ArrayList<>();
+        return bloqueados;   // la GUI solo lee
     }
 
     @Override
     public List<ProcesoPlanificable> getColaTerminados() {
-        // Este planificador no gestiona la cola de terminados.
-        return new ArrayList<>();
+        return terminados;   // llena donde corresponda si marcas terminados aquí
     }
-    // --- FIN DE MODIFICACIONES PARA LA GUI ---
 }

@@ -44,6 +44,7 @@ public interface Señalizador {
     void empujarEvento(EventoSistema t, String msg, String det);
     void actualizarMetricas(long cicloActual);
     void refrescarConfig();
+    default void setTextoMetricas(String texto) { /* no-op */ }
 }
 
 /*package simuladorSO.gui;

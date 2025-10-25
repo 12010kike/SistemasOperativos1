@@ -1,3 +1,193 @@
+package simuladorSO;
+
+import simuladorSO.nucleo.BusEventos;
+import simuladorSO.nucleo.BusEventosSimple;
+import simuladorSO.nucleo.CPU;
+import simuladorSO.nucleo.ImplementacionCPU;
+import simuladorSO.nucleo.Despachador;
+import simuladorSO.nucleo.ImplementacionDespachador;
+import simuladorSO.nucleo.GestorEntradaSalida;
+
+import simuladorSO.planificador.PlanificadorCortoPlazo;
+import simuladorSO.planificador.PlanificadorFCFS;
+import simuladorSO.planificador.PlanificadorSJF;
+import simuladorSO.planificador.PlanificadorSRTF;
+import simuladorSO.planificador.PlanificadorRR;
+import simuladorSO.planificador.PlanificadorPrioridadPreemption;
+import simuladorSO.planificador.PlanificadorMLFQ;
+
+import simuladorSO.modelo.ProcesoPlanificable;
+import simuladorSO.modelo.GeneradorProcesos;
+
+import simuladorSO.gui.ControladorReal;
+import simuladorSO.gui.SimuladorGUI;
+
+import javax.swing.SwingUtilities;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.concurrent.atomic.AtomicReference;
+
+public class Main {
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> {
+
+            // 1) Núcleo (bus, CPU, despachador)
+            BusEventos bus = new BusEventosSimple();
+            CPU cpu = new ImplementacionCPU(bus);
+            Despachador despachador = new ImplementacionDespachador(cpu, bus);
+
+            // 2) Planificadores
+            Map<String, PlanificadorCortoPlazo> planificadores = new HashMap<>();
+            planificadores.put("FCFS", new PlanificadorFCFS());
+            planificadores.put("SJF",  new PlanificadorSJF());
+            planificadores.put("SRTF", new PlanificadorSRTF());
+            planificadores.put("RR",   new PlanificadorRR()); // requiere getQuantum() si lo usas
+            planificadores.put("PRIORIDAD_PREEMPTIVA", new PlanificadorPrioridadPreemption());
+            planificadores.put("MLFQ", new PlanificadorMLFQ(3, new int[]{2, 4, 8}, 20));
+
+            PlanificadorCortoPlazo planificadorInicial = planificadores.get("FCFS");
+
+            // 3) GUI
+            SimuladorGUI vista = new SimuladorGUI();
+            String[] nombres = planificadores.keySet().stream().sorted().toArray(String[]::new);
+            vista.setAlgoritmosDisponibles(nombres);
+
+            // 4) Generador de procesos
+            GeneradorProcesos generador = new GeneradorProcesos();
+
+            // 5) Logger de E/S → GUI y avisos al controlador
+            final AtomicReference<ControladorReal> refCtrl = new AtomicReference<>();
+
+            GestorEntradaSalida.Logger loggerParaGUI = (ciclo, evento, detalle) -> {
+                // Línea en el Log de la GUI
+                vista.empujarEvento(null, evento, detalle + " (Ciclo: " + ciclo + ")");
+
+                // Si completó E/S, pedir al controlador que retire de “Bloqueados”
+                if ("IO_COMPLETE".equals(evento)) {
+                    ControladorReal ctrl = refCtrl.get();
+                    if (ctrl != null) {
+                        boolean quitado = false;
+
+                        // 1) Intento por pid=NNN
+                        int idx = detalle.indexOf("pid=");
+                        if (idx >= 0) {
+                            try {
+                                int end = detalle.indexOf(')', idx);
+                                int pid = Integer.parseInt(detalle.substring(idx + 4, end));
+                                ctrl.notificarIOCompletaPorPid(pid);
+                                quitado = true;
+                            } catch (Exception ignored) {}
+                        }
+
+                        // 2) Si no, intento por nombre: "NOMBRE vuelve a LISTOS"
+                        if (!quitado) {
+                            int ix = detalle.indexOf(" vuelve");
+                            if (ix > 0) {
+                                String nombreProc = detalle.substring(0, ix).trim();
+                                ctrl.notificarIOCompletaPorNombre(nombreProc);
+                            }
+                        }
+                    }
+                }
+            };
+
+            // 6) Gestor de E/S
+            GestorEntradaSalida gestorES = new GestorEntradaSalida(planificadorInicial, loggerParaGUI);
+            gestorES.setMsPorCiclo(50); // velocidad inicial de la E/S (ms por ciclo de E/S)
+
+            // 7) Controlador
+            ControladorReal controlador = new ControladorReal(
+                vista, cpu, planificadorInicial, despachador, planificadores, generador, gestorES
+            );
+            refCtrl.set(controlador);
+
+            // 8) Conectar GUI ↔ Controlador (ANTES de setVisible)
+            vista.setControlador(controlador);
+            vista.configurarListeners();
+
+            // 9) Hilo de simulación (reloj principal)
+            Thread hiloSimulacion = new Thread(() -> {
+                long ciclo = 0;
+                while (true) {
+                    if (controlador.estaCorriendo()) {
+
+                        ProcesoPlanificable procesoEnCPU = cpu.ejecutando();
+
+                        // 1) Revisar fin/bloqueo del que estaba ejecutando
+                        if (procesoEnCPU != null) {
+                            if (procesoEnCPU.completo()) {
+                                ProcesoPlanificable terminado = despachador.expropiarActual(ciclo);
+                                controlador.notificarProcesoTerminado(terminado, ciclo);
+                                procesoEnCPU = null;
+
+                            } else if (procesoEnCPU.debeSolicitarES(ciclo)) {
+                                ProcesoPlanificable p = despachador.expropiarActual(ciclo);
+                                if (p != null) {
+                                    controlador.notificarProcesoBloqueado(p, ciclo);
+                                    // que el planificador registre una sola vez que p está bloqueado
+                                    controlador.getPlanificadorActual().registrarProcesoBloqueado(p);
+                                    // duración de E/S: usamos ioDuraM() que expone PCBVista
+                                    gestorES.solicitarES(p, p.ioDuraM(), ciclo);
+                                }
+                                procesoEnCPU = null;
+                            }
+                        }
+
+                        // 2) Si CPU libre, pedir siguiente al planificador
+                        if (procesoEnCPU == null) {
+                            procesoEnCPU = controlador.getPlanificadorActual().seleccionarSiguiente(ciclo);
+                            if (procesoEnCPU != null) {
+                                controlador.notificarPosibleDesbloqueo(procesoEnCPU);
+                                controlador.marcarPrimeraRespuestaSiAplica(procesoEnCPU.pid(), ciclo);
+                                despachador.despacharACPU(procesoEnCPU, ciclo);
+                            }
+                        }
+
+                        // 3) Ejecutar 1 tick de CPU
+                        if (procesoEnCPU != null) {
+                            cpu.paso(ciclo);
+                            controlador.sumarCpuTick(procesoEnCPU.pid());
+                        }
+
+                        // 3.b) Corte por quantum (solo si RR)
+                        if (procesoEnCPU != null
+                                && controlador.getPlanificadorActual() instanceof PlanificadorRR rr) {
+                            int q = rr.getQuantum(); // tu RR debe exponer getQuantum()
+                            if (procesoEnCPU.quantumConsumido() >= q) {
+                                controlador.getPlanificadorActual().alVencerQuantum(procesoEnCPU, ciclo);
+                                despachador.expropiarActual(ciclo); // RR ya reencola en alVencerQuantum
+                                procesoEnCPU = null;
+                            }
+                        }
+
+                        // (La E/S corre en su propio hilo dentro del Gestor de E/S)
+
+                        // 4) Refrescar GUI (CPU/colas/métricas) en EDT
+                        final long cicloGUI = ciclo;
+                        SwingUtilities.invokeLater(() -> controlador.actualizarVistaCicloACiclo(cicloGUI));
+
+                        ciclo++;
+                    }
+
+                    try {
+                        Thread.sleep(controlador.getTickMs());
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            });
+
+            hiloSimulacion.setDaemon(true);
+            hiloSimulacion.start();
+
+            // 10) Mostrar GUI
+            vista.setVisible(true);
+        });
+    }
+}
+
 /*package simuladorSO;
 
 // --- Importaciones de Lógica ---
@@ -245,7 +435,7 @@ public class Main {
 */
 
 
-package simuladorSO;
+/*package simuladorSO;
 
 import simuladorSO.modelo.*;
 import simuladorSO.planificador.*;
@@ -335,3 +525,4 @@ public class Main {
     }
 }
 
+*/

@@ -14,50 +14,19 @@ package simuladorSO.modelo;
 
 public class Proceso implements ProcesoPlanificable {
     private final PCB pcb;
-    private int quantumConsumido = 0;
-    private int ejecutadasDesdeUltimaES = 0;
 
-    public Proceso(PCB pcb) {
-        this.pcb = pcb;
-    }
+    public Proceso(PCB pcb) { this.pcb = pcb; }
 
-    @Override
-    public void ejecutarUnCiclo(long ciclo) {
-        if (pcb.instruccionesRestantes() <= 0) return;
-        pcb.avanzarInstruccion();
-        quantumConsumido++;
-        ejecutadasDesdeUltimaES++;
-        System.out.println("Ciclo " + ciclo + " -> " + nombre()
-                + " ejecuta. PC=" + pc() + " MAR=" + mar()
-                + " Rest=" + instruccionesRestantes());
-    }
+    // Delegación ProcesoPlanificable
+    @Override public void ejecutarUnCiclo(long ciclo) { pcb.ejecutarUnCiclo(ciclo); }
+    @Override public boolean debeSolicitarES(long ciclo) { return pcb.debeSolicitarES(ciclo); }
+    @Override public boolean completo() { return pcb.completo(); }
+    @Override public void setEstado(EstadoProceso s) { pcb.setEstado(s); }
+    @Override public void reiniciarQuantum() { pcb.reiniciarQuantum(); }
+    @Override public int quantumConsumido() { return pcb.quantumConsumido(); }
+    @Override public void setPrioridad(int p) { pcb.setPrioridad(p); }
 
-    @Override
-    public boolean debeSolicitarES(long ciclo) {
-        if (pcb.tipo() == TipoProceso.IO_BOUND && pcb.ioCadaK() > 0) {
-            if (ejecutadasDesdeUltimaES >= pcb.ioCadaK()) {
-                ejecutadasDesdeUltimaES = 0;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    @Override
-    public boolean completo() { return pcb.instruccionesRestantes() <= 0; }
-
-    @Override
-    public void setEstado(EstadoProceso nuevo) { pcb.setEstado(nuevo); }
-
-    @Override
-    public void reiniciarQuantum() { quantumConsumido = 0; }
-
-    @Override
-    public int quantumConsumido() { return quantumConsumido; }
-
-    @Override
-    public void setPrioridad(int nueva) { pcb.setPrioridad(nueva); }
-
+    // Delegación PCBVista
     @Override public long pid() { return pcb.pid(); }
     @Override public String nombre() { return pcb.nombre(); }
     @Override public EstadoProceso estado() { return pcb.estado(); }
@@ -70,21 +39,21 @@ public class Proceso implements ProcesoPlanificable {
     @Override public int ioDuraM() { return pcb.ioDuraM(); }
     @Override public int prioridad() { return pcb.prioridad(); }
     @Override public long cicloLlegada() { return pcb.cicloLlegada(); }
-    
-    
-    // --- INICIO DE MODIFICACIÓN PARA LA GUI ---
-    // Documentación: Se añade el método toString() para proporcionar una representación
-    // legible del proceso en los componentes de la interfaz gráfica, como JList.
-    
-    /**
-     * Devuelve una representación en texto del proceso, ideal para la GUI.
-     * Este método es llamado automáticamente por los componentes de Swing como JList.
-     * @return Un String con el formato "PID: [id] - [nombre] (Rest: [instrucciones])".
-     */
+
     @Override
     public String toString() {
-        return "PID: " + pid() + " - " + nombre() + 
-               " (Rest: " + instruccionesRestantes() + ")";
+        return pcb.toString();
     }
-    // --- FIN DE MODIFICACIÓN PARA LA GUI ---
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Proceso other)) return false;
+        return this.pid() == other.pid();
+    }
+
+    @Override
+    public int hashCode() {
+        return Long.hashCode(pid());
+    }
 }

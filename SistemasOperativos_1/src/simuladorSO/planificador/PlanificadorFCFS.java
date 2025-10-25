@@ -19,19 +19,50 @@ import java.util.ArrayList;
 // saber lo que cambié yo del código
 
 public class PlanificadorFCFS implements PlanificadorCortoPlazo {
-    private final Cola<ProcesoPlanificable> cola = new ColaEnlazada<>();
+    private final ColaEnlazada<ProcesoPlanificable> colaListos = new ColaEnlazada<>();
+    private final ColaEnlazada<ProcesoPlanificable> colaBloqueados = new ColaEnlazada<>();
     private final Semaphore mutex = new Semaphore(1, true);
 
-    @Override public void encolar(ProcesoPlanificable p, long ciclo) {
-        try { mutex.acquire(); cola.ofrecer(p); } catch (InterruptedException ignored) {}
+    @Override
+    public void registrarProcesoBloqueado(ProcesoPlanificable p) {
+        try {
+            mutex.acquire();
+            // Un proceso en la CPU ya no está en la cola de listos.
+            // Para bloquearlo, simplemente lo añadimos a la cola de bloqueados.
+            if (!colaBloqueados.contiene(p)) {
+                 colaBloqueados.ofrecer(p);
+            }
+        } catch (InterruptedException ignored) {} 
         finally { mutex.release(); }
     }
 
-    @Override public ProcesoPlanificable seleccionarSiguiente(long ciclo) {
-        try { mutex.acquire(); return cola.sacar(); } catch (InterruptedException ignored) { return null; }
+    @Override
+    public void encolar(ProcesoPlanificable p, long ciclo) {
+        try {
+            mutex.acquire();
+            colaBloqueados.remover(p); // Ahora esto funcionará gracias a equals()
+            if (!colaListos.contiene(p)) {
+                colaListos.ofrecer(p);
+            }
+        } catch (InterruptedException ignored) {} 
         finally { mutex.release(); }
     }
 
+
+
+    @Override
+    public ProcesoPlanificable seleccionarSiguiente(long ciclo) {
+        ProcesoPlanificable p = null;
+        try {
+            mutex.acquire();
+            // SACAR el proceso de la cola es el comportamiento correcto.
+            p = colaListos.sacar();
+        } catch (InterruptedException ignored) {} 
+        finally { mutex.release(); }
+        return p;
+    }
+
+    
     @Override public void alVencerQuantum(ProcesoPlanificable corriendo, long ciclo) { }
     @Override public void alArribar(ProcesoPlanificable p, ProcesoPlanificable corriendo, long ciclo) {  }
     @Override public void reordenarColas(long ciclo) { }
@@ -46,29 +77,25 @@ public class PlanificadorFCFS implements PlanificadorCortoPlazo {
     
     @Override
     public List<ProcesoPlanificable> getColaListos() {
-        // NOTA: Debes crear un método "toList()" en tu clase ColaEnlazada que 
-        // recorra tus nodos y devuelva un java.util.ArrayList con los datos.
-        // Asumiendo que ese método existe:
+        List<ProcesoPlanificable> lista = new ArrayList<>();
         try {
             mutex.acquire();
-            if (cola instanceof ColaEnlazada) { // Para asegurar que podemos hacer la conversión
-                return ((ColaEnlazada<ProcesoPlanificable>) cola).toList();
-            }
-        } catch (InterruptedException ignored) {
-            // En caso de error, devolver una lista vacía
-        } finally {
-            mutex.release();
-        }
-        return new ArrayList<>(); // Devuelve una lista vacía si algo falla o no es del tipo esperado
+            lista = colaListos.toList();
+        } catch (InterruptedException ignored) {} 
+        finally { mutex.release(); }
+        return lista;
     }
 
     @Override
     public List<ProcesoPlanificable> getColaBloqueados() {
-        // Este planificador no gestiona la cola de bloqueados.
-        // Por lo tanto, devuelve una lista vacía.
-        return new ArrayList<>();
+        List<ProcesoPlanificable> lista = new ArrayList<>();
+        try {
+            mutex.acquire();
+            lista = colaBloqueados.toList();
+        } catch (InterruptedException ignored) {} 
+        finally { mutex.release(); }
+        return lista;
     }
-
     @Override
     public List<ProcesoPlanificable> getColaTerminados() {
         // Este planificador no gestiona la cola de terminados.

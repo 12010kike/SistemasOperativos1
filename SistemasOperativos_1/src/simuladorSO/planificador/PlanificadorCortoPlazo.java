@@ -26,7 +26,8 @@ public interface PlanificadorCortoPlazo extends Planificador {
     List<ProcesoPlanificable> getColaListos();
     List<ProcesoPlanificable> getColaBloqueados();
     List<ProcesoPlanificable> getColaTerminados();
-    // Añade aquí los getters para las colas de suspendidos si tu planificador las maneja
+    void registrarProcesoBloqueado(ProcesoPlanificable p);
+        // Añade aquí los getters para las colas de suspendidos si tu planificador las maneja
     
     // --- FIN DE MODIFICACIONES PARA LA GUI ---
 }
