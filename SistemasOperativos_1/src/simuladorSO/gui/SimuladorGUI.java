@@ -277,7 +277,7 @@ public void refrescarCPU(ProcesoPlanificable p) {
 
 
 
-    @Override
+    /*@Override
 public void refrescarColas(List<ProcesoPlanificable> listos,
                            List<ProcesoPlanificable> bloqueados,
                            List<ProcesoPlanificable> terminados,
@@ -296,7 +296,7 @@ public void refrescarColas(List<ProcesoPlanificable> listos,
         for (var p : (terminados != null ? terminados : java.util.List.<ProcesoPlanificable>of()))
             modelTerminados.addElement(formateaItem(p, "TERMINATED"));
     });
-}
+}*/
 
 private String formateaItem(ProcesoPlanificable p, String estadoFallback) {
     String estado = estadoFallback;
