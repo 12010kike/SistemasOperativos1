@@ -19,7 +19,7 @@ public class GestorEntradaSalida {
     }
 
     private final EntradaSalida dispositivo;
-    private final PlanificadorCortoPlazo cortoPlazo;
+    private PlanificadorCortoPlazo cortoPlazo;
     private final Logger logger;
     private final Semaphore mutex = new Semaphore(1, true);
     private volatile int msPorCiclo = 50;
@@ -39,13 +39,11 @@ public class GestorEntradaSalida {
 
     public void apagar() { dispositivo.detener(); }
 
-    // --- OPCIÓN A: firma antigua, pero sin depender de ioDurM() en compilación
     public void solicitarES(ProcesoPlanificable p, long cicloActual) {
-        int durTicks = extraerDuracionES(p); // intenta ioDurM()/ioDur()/getIoDur() por reflexión; si no, 1
+        int durTicks = extraerDuracionES(p); 
         solicitarES(p, durTicks, cicloActual);
     }
 
-    // --- OPCIÓN B: firma preferida (pásame la duración explícita desde el intérprete)
     public void solicitarES(ProcesoPlanificable p, int durTicks, long cicloActual) {
         try {
             mutex.acquire();
@@ -62,7 +60,18 @@ public class GestorEntradaSalida {
         }
     }
 
-    
+        public void setPlanificador(PlanificadorCortoPlazo nuevo) {
+        if (nuevo == null) return;
+        try {
+            mutex.acquire();
+            this.cortoPlazo = nuevo;
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        } finally {
+            mutex.release();
+        }
+    }
+
     private int extraerDuracionES(ProcesoPlanificable p) {
         String[] candidatos = {"ioDurM", "ioDur", "getIoDur"};
         for (String nombre : candidatos) {
@@ -93,11 +102,12 @@ public class GestorEntradaSalida {
             try {
                 mutex.acquire();
                 p.setEstado(EstadoProceso.READY);
+                long cicloFinalizacion = this.cicloSolicitud + this.durTicks;
                 if (logger != null) {
-                    logger.log(cicloSolicitud, "IO_COMPLETE",
+                    logger.log(cicloFinalizacion, "IO_COMPLETE",
                             p.nombre() + " vuelve a LISTOS");
                 }
-                cortoPlazo.encolar(p, cicloSolicitud);
+                cortoPlazo.encolar(p, cicloFinalizacion);
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             } finally {

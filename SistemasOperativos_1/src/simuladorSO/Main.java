@@ -1,3 +1,215 @@
+package simuladorSO;
+
+import simuladorSO.nucleo.BusEventos;
+import simuladorSO.nucleo.BusEventosSimple;
+import simuladorSO.nucleo.CPU;
+import simuladorSO.nucleo.ImplementacionCPU;
+import simuladorSO.nucleo.Despachador;
+import simuladorSO.nucleo.ImplementacionDespachador;
+import simuladorSO.nucleo.GestorEntradaSalida;
+
+import simuladorSO.planificador.PlanificadorCortoPlazo;
+import simuladorSO.planificador.PlanificadorFCFS;
+import simuladorSO.planificador.PlanificadorSJF;
+import simuladorSO.planificador.PlanificadorSRTF;
+import simuladorSO.planificador.PlanificadorRR;
+import simuladorSO.planificador.PlanificadorPrioridadPreemption;
+import simuladorSO.planificador.PlanificadorMLFQ;
+
+import simuladorSO.modelo.ProcesoPlanificable;
+import simuladorSO.modelo.GeneradorProcesos;
+
+import simuladorSO.gui.ControladorReal;
+import simuladorSO.gui.SimuladorGUI;
+
+import simuladorSO.metrica.RecolectorMetricas;
+
+import javax.swing.SwingUtilities;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.concurrent.atomic.AtomicReference;
+
+public class Main {
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> {
+
+            BusEventos bus = new BusEventosSimple();
+            CPU cpu = new ImplementacionCPU(bus);
+            Despachador despachador = new ImplementacionDespachador(cpu, bus);
+
+            Map<String, PlanificadorCortoPlazo> planificadores = new HashMap<>();
+            planificadores.put("FCFS", new PlanificadorFCFS());
+            planificadores.put("SJF",  new PlanificadorSJF());
+            planificadores.put("SRTF", new PlanificadorSRTF());
+            planificadores.put("RR",   new PlanificadorRR());
+            planificadores.put("PRIORIDAD_PREEMPTIVA", new PlanificadorPrioridadPreemption());
+            planificadores.put("MLFQ", new PlanificadorMLFQ(3, new int[]{2, 4, 8}, 20));
+
+            PlanificadorCortoPlazo planificadorInicial = planificadores.get("FCFS");
+
+            SimuladorGUI vista = new SimuladorGUI();
+            String[] nombres = planificadores.keySet().stream().sorted().toArray(String[]::new);
+            vista.setAlgoritmosDisponibles(nombres);
+
+            GeneradorProcesos generador = new GeneradorProcesos();
+
+            final AtomicReference<ControladorReal> refCtrl = new AtomicReference<>();
+
+            GestorEntradaSalida.Logger loggerParaGUI = (ciclo, evento, detalle) -> {
+                vista.empujarEvento(null, evento, detalle + " (Ciclo: " + ciclo + ")");
+
+                if ("IO_COMPLETE".equals(evento)) {
+                    ControladorReal ctrl = refCtrl.get();
+                    if (ctrl != null) {
+                        boolean quitado = false;
+
+                        int idx = detalle.indexOf("pid=");
+                        if (idx >= 0) {
+                            try {
+                                int end = detalle.indexOf(')', idx);
+                                int pid = Integer.parseInt(detalle.substring(idx + 4, end));
+                                ctrl.notificarIOCompletaPorPid(pid);
+                                quitado = true;
+                            } catch (Exception ignored) {}
+                        }
+
+                        if (!quitado) {
+                            int ix = detalle.indexOf(" vuelve");
+                            if (ix > 0) {
+                                String nombreProc = detalle.substring(0, ix).trim();
+                                ctrl.notificarIOCompletaPorNombre(nombreProc);
+                            }
+                        }
+                    }
+                }
+            };
+
+            GestorEntradaSalida gestorES = new GestorEntradaSalida(planificadorInicial, loggerParaGUI);
+            gestorES.setMsPorCiclo(50); 
+            ControladorReal controlador = new ControladorReal(
+                vista, cpu, planificadorInicial, despachador, planificadores, generador, gestorES
+            );
+            refCtrl.set(controlador);
+
+            vista.setControlador(controlador);
+            vista.configurarListeners();
+
+            RecolectorMetricas reco = new RecolectorMetricas();
+
+            Thread hiloSimulacion = new Thread(() -> {
+                long ciclo = 0;
+                while (true) {
+
+                    if (controlador.consumirResetPendiente()) {
+                        ciclo = 0;
+                        try { despachador.expropiarActual(ciclo); } catch (Exception ignore) {}
+                        planificadores.values().forEach(p -> {
+                            try { p.clear(); } catch (Exception ignore) {}
+                        });
+                        final long cicloGUI0 = ciclo;
+                        SwingUtilities.invokeLater(() -> controlador.actualizarVistaCicloACiclo(cicloGUI0, ""));
+                    }
+
+                    if (controlador.estaCorriendo()) {
+
+                        ProcesoPlanificable procesoEnCPU = cpu.ejecutando();
+
+                        if (procesoEnCPU != null) {
+                            if (procesoEnCPU.completo()) {
+                                ProcesoPlanificable terminado = despachador.expropiarActual(ciclo);
+                                controlador.notificarProcesoTerminado(terminado, ciclo);
+
+                                controlador.actualizarVentanaMetricas(false, true);
+                                reco.registrarFinalizacion();
+
+                                procesoEnCPU = null;
+
+                            } else if (procesoEnCPU.debeSolicitarES(ciclo)) {
+                                ProcesoPlanificable p = despachador.expropiarActual(ciclo);
+                                if (p != null) {
+                                    controlador.notificarProcesoBloqueado(p, ciclo);
+                                    controlador.getPlanificadorActual().registrarProcesoBloqueado(p);
+                                    gestorES.solicitarES(p, p.ioDuraM(), ciclo);
+                                }
+                                procesoEnCPU = null;
+                            }
+                        }
+
+                        if (procesoEnCPU == null) {
+                            procesoEnCPU = controlador.getPlanificadorActual().seleccionarSiguiente(ciclo);
+                            if (procesoEnCPU != null) {
+                                controlador.notificarPosibleDesbloqueo(procesoEnCPU);
+                                controlador.marcarPrimeraRespuestaSiAplica(procesoEnCPU.pid(), ciclo);
+                                despachador.despacharACPU(procesoEnCPU, ciclo);
+                            }
+                        }
+
+                        boolean huboCPU = false;
+                        if (procesoEnCPU != null) {
+                            cpu.paso(ciclo);
+                            controlador.sumarCpuTick(procesoEnCPU.pid());
+                            huboCPU = true;
+                        }
+
+                        if (procesoEnCPU != null
+                                && controlador.getPlanificadorActual() instanceof PlanificadorRR rr) {
+                            int q = rr.getQuantum();
+                            if (procesoEnCPU.quantumConsumido() >= q) {
+                                controlador.getPlanificadorActual().alVencerQuantum(procesoEnCPU, ciclo);
+                                despachador.expropiarActual(ciclo);
+                                procesoEnCPU = null;
+                            }
+                        }
+
+                        if (procesoEnCPU != null && controlador.getPlanificadorActual().debeExpropiar(procesoEnCPU)) {
+                            controlador.getPlanificadorActual().reencolarPorPreempcion(procesoEnCPU, ciclo);
+                            despachador.expropiarActual(ciclo);
+                            procesoEnCPU = null;
+
+                            procesoEnCPU = controlador.getPlanificadorActual().seleccionarSiguiente(ciclo);
+                            if (procesoEnCPU != null) {
+                                controlador.notificarPosibleDesbloqueo(procesoEnCPU);
+                                controlador.marcarPrimeraRespuestaSiAplica(procesoEnCPU.pid(), ciclo);
+                                despachador.despacharACPU(procesoEnCPU, ciclo);
+                            }
+                        }
+
+                        controlador.actualizarVentanaMetricas(huboCPU, false);
+                        reco.registrarTick(huboCPU);
+                        int nListos = controlador.getPlanificadorActual().getColaListos().size();
+                        int nBloqs  = controlador.getPlanificadorActual().getColaBloqueados().size();
+                        reco.registrarInstantanea(nListos, nBloqs, 0);
+
+                        double util = reco.getUtilizacionFinal();
+                        double thr  = reco.getThroughputFinal();
+                        String extra = String.format(java.util.Locale.US,
+                                " | Util=%.0f%% | Th=%.3f", util * 100.0, thr);
+
+                        final long cicloGUI = ciclo;
+                        final String suf = extra;
+                        SwingUtilities.invokeLater(() -> controlador.actualizarVistaCicloACiclo(cicloGUI, suf));
+
+                        ciclo++;
+                    }
+
+                    try {
+                        Thread.sleep(controlador.getTickMs());
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            });
+
+            hiloSimulacion.setDaemon(true);
+            hiloSimulacion.start();
+
+            vista.setVisible(true);
+        });
+    }
+}
+
 /*package simuladorSO;
 
 // --- Importaciones de Lógica ---
@@ -245,7 +457,7 @@ public class Main {
 */
 
 
-package simuladorSO;
+/*package simuladorSO;
 
 import simuladorSO.modelo.*;
 import simuladorSO.planificador.*;
@@ -335,3 +547,4 @@ public class Main {
     }
 }
 
+*/

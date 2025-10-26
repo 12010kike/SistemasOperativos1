@@ -64,27 +64,58 @@ public class ColaEnlazada<T> implements Cola<T> {
             }
         };
     }  
-    // --- INICIO DE MODIFICACIONES PARA LA GUI ---
-    // Este método fue añadido para cumplir con el contrato de la GUI.
-    // Proporciona una COPIA de los datos de la cola en un formato estándar (java.util.List)
-    // para que la Vista (la GUI) pueda mostrarlos sin conocer la implementación interna de esta cola.
-    // La lógica principal del simulador NO utiliza este método para gestionar el estado.
     
     public List<T> toList() {
-        // 1. Se crea el ArrayList temporal que servirá como contenedor de transporte.
         List<T> listaParaGUI = new ArrayList<>();
         
-        // 2. Se recorre la estructura de datos interna (la lista enlazada) desde la cabeza a la cola.
         Nodo<T> actual = this.head;
         while (actual != null) {
-            // 3. Se añade cada elemento a la lista temporal.
             listaParaGUI.add(actual.v);
             actual = actual.next;
         }
         
-        // 4. Se devuelve la copia en formato estándar.
         return listaParaGUI;
     }
+    public boolean contiene(T elemento) {
+        Nodo<T> actual = this.head; 
+        while (actual != null) {
+            if (actual.v.equals(elemento)) {
+                return true;
+            }
+            actual = actual.next; 
+        }
+        return false;
+    }
 
-    // --- FIN DE MODIFICACIONES PARA LA GUI ---
+
+    public void remover(T elemento) {
+        if (head == null) return; 
+
+        if (head.v.equals(elemento)) { 
+            head = head.next; 
+            if (head != null) {
+                head.prev = null;
+            } else {
+                tail = null; 
+            }
+            size--;
+            return;
+        }
+
+        Nodo<T> actual = this.head;
+        while (actual.next != null) { 
+            if (actual.next.v.equals(elemento)) { 
+                if (actual.next == tail) {
+                    tail = actual;
+                }
+                actual.next = actual.next.next;
+                if (actual.next != null) {
+                    actual.next.prev = actual;
+                }
+                size--;
+                return;
+            }
+            actual = actual.next; 
+        }
+    }
 }

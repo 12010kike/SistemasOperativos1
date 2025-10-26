@@ -12,21 +12,23 @@ package simuladorSO.planificador;
 // Modificado por Santiago. Dejo todos estos comentarios para
 // saber lo que cambié yo del código
 
-import java.util.List; // NUEVO: Importamos la List de Java
-import simuladorSO.modelo.ProcesoPlanificable; // Necesitamos importar esto si no está ya
+import java.util.List; 
+import simuladorSO.modelo.ProcesoPlanificable; 
 
 public interface PlanificadorCortoPlazo extends Planificador {
     void reordenarColas(long ciclo);
     PoliticaPlanificacion politica();
-
-    // --- INICIO DE MODIFICACIONES PARA LA GUI ---
-    // Estos métodos permiten a la interfaz gráfica consultar el estado de las colas.
-    // Devuelven una copia en un formato estándar para no exponer la estructura interna.
+    default void clear() { /* por defecto no hace nada */ }
     
     List<ProcesoPlanificable> getColaListos();
     List<ProcesoPlanificable> getColaBloqueados();
     List<ProcesoPlanificable> getColaTerminados();
-    // Añade aquí los getters para las colas de suspendidos si tu planificador las maneja
-    
-    // --- FIN DE MODIFICACIONES PARA LA GUI ---
+    void registrarProcesoBloqueado(ProcesoPlanificable p);
+    default boolean debeExpropiar(simuladorSO.modelo.ProcesoPlanificable corriendo) { 
+        return false; 
+    }
+
+    default void reencolarPorPreempcion(simuladorSO.modelo.ProcesoPlanificable p, long ciclo) {
+        encolar(p, ciclo); 
+    }
 }

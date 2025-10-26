@@ -1,81 +1,194 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package simuladorSO.planificador;
+
 import java.util.concurrent.Semaphore;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.LinkedList;
+
 import simuladorSO.ed.ColaPrioridad;
 import simuladorSO.ed.ColaPrincipal;
 import simuladorSO.modelo.ProcesoPlanificable;
-
-import java.util.List;
-import java.util.ArrayList;
 
 /**
  *
  * @author obelm
  */
-
 // Modificado por Santiago. Dejo todos estos comentarios para
 // saber lo que cambié yo del código
 
-public class PlanificadorPrioridadPreemption implements PlanificadorCortoPlazo{
+public class PlanificadorPrioridadPreemption implements PlanificadorCortoPlazo {
+
     private final ColaPrioridad<ProcesoPlanificable> cola =
-        new ColaPrincipal<>((a,b) -> Integer.compare(a.prioridad(), b.prioridad()));
+        new ColaPrincipal<>((a, b) -> Integer.compare(a.prioridad(), b.prioridad()));
+
     private final Semaphore mutex = new Semaphore(1, true);
 
-    @Override public void encolar(ProcesoPlanificable p, long ciclo) {
-        try { mutex.acquire(); cola.insertar(p); } catch (InterruptedException ignored) {}
-        finally { mutex.release(); }
-    }
+    private final ArrayList<ProcesoPlanificable> listosSnapshot = new ArrayList<>();
+    private final LinkedList<ProcesoPlanificable> bloqueados    = new LinkedList<>();
+    private final LinkedList<ProcesoPlanificable> terminados    = new LinkedList<>();
 
-    @Override public ProcesoPlanificable seleccionarSiguiente(long ciclo) {
-        try { mutex.acquire(); return cola.extraer(); } catch (InterruptedException ignored) { return null; }
-        finally { mutex.release(); }
-    }
-
-    @Override public void alVencerQuantum(ProcesoPlanificable c, long ciclo) { }
-    @Override public void alArribar(ProcesoPlanificable p, ProcesoPlanificable corriendo, long ciclo) {
-        if (corriendo != null && p.prioridad() < corriendo.prioridad()) {
-            System.out.println("→ Expropiación por prioridad: " + corriendo.nombre() + " < " + p.nombre());
+    private void refreshSnapshot_NoLock() {
+        ArrayList<ProcesoPlanificable> tmp = new ArrayList<>();
+        while (true) {
+            ProcesoPlanificable x = cola.extraer();
+            if (x == null) break;
+            tmp.add(x);
         }
+        for (ProcesoPlanificable x : tmp) cola.insertar(x);
+        listosSnapshot.clear();
+        listosSnapshot.addAll(tmp);
     }
 
-    @Override public void reordenarColas(long ciclo) { }
-    @Override public void reconfigurar(Object delta) { }
-    @Override public PoliticaPlanificacion politica() { return PoliticaPlanificacion.PRIORIDAD_PREEMPTIVA; }
-    // --- INICIO DE MODIFICACIONES PARA LA GUI ---
-    // Documentación: Se implementan los métodos de la interfaz PlanificadorCortoPlazo
-    // para exponer el estado de las colas a la interfaz gráfica.
+    private void removerDeCola_NoLock(ProcesoPlanificable objetivo) {
+        if (objetivo == null) return;
+        ArrayList<ProcesoPlanificable> tmp = new ArrayList<>();
+        while (true) {
+            ProcesoPlanificable x = cola.extraer();
+            if (x == null) break;
+            if (!x.equals(objetivo)) tmp.add(x);
+        }
+        for (ProcesoPlanificable x : tmp) cola.insertar(x);
+    }
+
+    private void vaciarCola_NoLock() {
+        while (cola.extraer() != null) { /* drena */ }
+    }
+
 
     @Override
-    public List<ProcesoPlanificable> getColaListos() {
-        // NOTA: Al igual que con ColaEnlazada, necesitarás un método "toList()" en tu
-        // clase ColaPrioridad (y/o ColaPrincipal) que devuelva un java.util.ArrayList.
+    public void encolar(ProcesoPlanificable p, long ciclo) {
+        if (p == null) return;
         try {
             mutex.acquire();
-            // Suponiendo que el método toList() existe en tu implementación de ColaPrioridad
-            return cola.toList(); 
-        } catch (InterruptedException ignored) {
-            // En caso de error, devolver una lista vacía
+            bloqueados.remove(p);
+            removerDeCola_NoLock(p);
+            cola.insertar(p);
+
+            if (!listosSnapshot.contains(p)) listosSnapshot.add(p);
+            refreshSnapshot_NoLock();
+
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
         } finally {
             mutex.release();
         }
-        return new ArrayList<>();
+    }
+
+    @Override
+    public ProcesoPlanificable seleccionarSiguiente(long ciclo) {
+        try {
+            mutex.acquire();
+            ProcesoPlanificable x = cola.extraer();
+            if (x != null) {
+                listosSnapshot.remove(x);   
+                bloqueados.remove(x);       
+            }
+            return x;
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return null;
+        } finally {
+            mutex.release();
+        }
+    }
+
+    @Override public void alVencerQuantum(ProcesoPlanificable c, long ciclo) { /* no aplica */ }
+    @Override public void alArribar(ProcesoPlanificable p, ProcesoPlanificable c, long ciclo) { /* opcional/log */ }
+    @Override public void reordenarColas(long ciclo) { /* no-op */ }
+    @Override public void reconfigurar(Object delta) { /* no-op */ }
+    @Override public PoliticaPlanificacion politica() { return PoliticaPlanificacion.PRIORIDAD_PREEMPTIVA; }
+
+    @Override
+    public boolean debeExpropiar(ProcesoPlanificable corriendo) {
+        if (corriendo == null) return false;
+        try {
+            mutex.acquire();
+            refreshSnapshot_NoLock();
+            if (listosSnapshot.isEmpty()) return false;
+
+            ProcesoPlanificable mejor = listosSnapshot.get(0);
+            return mejor.prioridad() < corriendo.prioridad();
+
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return false;
+        } finally {
+            mutex.release();
+        }
+    }
+
+    @Override
+    public void reencolarPorPreempcion(ProcesoPlanificable p, long ciclo) {
+        encolar(p, ciclo); 
+    }
+
+    @Override
+    public void registrarProcesoBloqueado(ProcesoPlanificable p) {
+        if (p == null) return;
+        try {
+            mutex.acquire();
+            removerDeCola_NoLock(p);   
+            listosSnapshot.remove(p);
+            if (!bloqueados.contains(p)) bloqueados.addLast(p);
+            refreshSnapshot_NoLock();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        } finally {
+            mutex.release();
+        }
+    }
+
+    @Override
+    public List<ProcesoPlanificable> getColaListos() {
+        try {
+            mutex.acquire();
+            return new ArrayList<>(listosSnapshot);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return List.of();
+        } finally {
+            mutex.release();
+        }
     }
 
     @Override
     public List<ProcesoPlanificable> getColaBloqueados() {
-        // Este planificador no gestiona la cola de bloqueados.
-        return new ArrayList<>();
+        try {
+            mutex.acquire();
+            return new ArrayList<>(bloqueados);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return List.of();
+        } finally {
+            mutex.release();
+        }
     }
 
     @Override
     public List<ProcesoPlanificable> getColaTerminados() {
-        // Este planificador no gestiona la cola de terminados.
-        return new ArrayList<>();
+        try {
+            mutex.acquire();
+            return new ArrayList<>(terminados);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return List.of();
+        } finally {
+            mutex.release();
+        }
     }
-    // --- FIN DE MODIFICACIONES PARA LA GUI ---
+
+    @Override
+    public void clear() {
+        try {
+            mutex.acquire();
+            vaciarCola_NoLock();
+            bloqueados.clear();
+            terminados.clear();
+            listosSnapshot.clear();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        } finally {
+            mutex.release();
+        }
+    }
 }
-
-

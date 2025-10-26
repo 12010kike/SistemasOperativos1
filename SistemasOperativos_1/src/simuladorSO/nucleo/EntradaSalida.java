@@ -55,16 +55,15 @@ public class EntradaSalida implements Runnable {
     public void run() {
         while (activo) {
             try {
-                // Esperar hasta que haya trabajo o se deba apagar
                 synchronized (notEmpty) {
                     while (activo && cola.vacia()) notEmpty.wait();
                     if (!activo) break;
                 }
                 Peticion p = cola.sacar();
-                if (p == null) continue; // seguridad
+                if (p == null) continue;
 
                 int d = Math.max(1, p.trabajo.duracionCiclos());
-                Thread.sleep((long) d * msPorCiclo);    // simula tiempo de E/S
+                Thread.sleep((long) d * msPorCiclo);   
                 p.trabajo.onComplete(System.currentTimeMillis());
 
             } catch (InterruptedException ie) {
@@ -74,6 +73,5 @@ public class EntradaSalida implements Runnable {
         }
     }
 
-    // Útil si luego lo quieres mostrar en la GUI o logs
     String getNombre() { return nombre; }
 }

@@ -9,7 +9,7 @@ package simuladorSO.nucleo;
  * @author eabdf
  */
 public class ImplementacionReloj implements Reloj, Runnable{
-    private volatile long duracionTickMs = 500; // 0.5s por defecto
+    private volatile long duracionTickMs = 500; 
     private volatile long cicloActual = 0;
     private volatile boolean corriendo = false;
 
@@ -81,7 +81,6 @@ public class ImplementacionReloj implements Reloj, Runnable{
         while (true) {
             if (corriendo) {
                 long c = ++cicloActual;
-                // snapshot de suscriptores para notificar sin bloquear
                 SuscriptorReloj[] copia;
                 int n;
                 synchronized (this) {
