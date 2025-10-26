@@ -31,12 +31,10 @@ public class SimuladorGUI extends javax.swing.JFrame implements Señalizador {
     private javax.swing.JLabel lblStatusActual;
     private simuladorSO.metrica.GraficoMetricaSwing grafUtil;
     private volatile boolean suspendirEventosCombo = false;
+    private DefaultListModel<String> modelListosSusp;
+    private DefaultListModel<String> modelBloqSusp;
 
-    
-
-    
-
-    
+        
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(SimuladorGUI.class.getName());
 
     /**
@@ -207,6 +205,11 @@ comboAlgoritmos.addActionListener(e -> {
         
         modelTerminados = new DefaultListModel<>();
         listaTerminados.setModel(modelTerminados);
+        modelListosSusp  = new DefaultListModel<>();
+        modelBloqSusp    = new DefaultListModel<>();
+        listListosSusp.setModel(modelListosSusp);
+        listBloqSusp.setModel(modelBloqSusp);
+
     }
         private String pcbLine(ProcesoPlanificable p) {
         return String.format("%s(pid=%d) [%s] pc=%d mar=%d prio=%d",
@@ -219,6 +222,23 @@ comboAlgoritmos.addActionListener(e -> {
         SwingUtilities.invokeLater(() -> {
             if (grafUtil != null) grafUtil.agregarPunto(valor01);
         });
+    }
+
+    @Override
+    public void refrescarColas(
+            java.util.List<simuladorSO.modelo.ProcesoPlanificable> listos,
+            java.util.List<simuladorSO.modelo.ProcesoPlanificable> bloqueados,
+            java.util.List<simuladorSO.modelo.ProcesoPlanificable> terminados,
+            java.util.List<simuladorSO.modelo.ProcesoPlanificable> listosSuspendidos,
+            java.util.List<simuladorSO.modelo.ProcesoPlanificable> bloqueadosSuspendidos) {
+
+        fill(modelListos,      listos,              "READY");
+        fill(modelBloqueados,  bloqueados,          "BLOCKED");
+        fill(modelTerminados,  terminados,          "TERMINATED");
+
+        // ➜ NUEVOS:
+        fill(modelListosSusp,  listosSuspendidos,   "S-READY");
+        fill(modelBloqSusp,    bloqueadosSuspendidos,"S-BLOCKED");
     }
 
 @Override
@@ -353,6 +373,10 @@ private String formateaItem(ProcesoPlanificable p, String estadoFallback) {
         listaBloqueados = new javax.swing.JList<>();
         jScrollPane3 = new javax.swing.JScrollPane();
         listaTerminados = new javax.swing.JList<>();
+        jScrollPane5 = new javax.swing.JScrollPane();
+        listListosSusp = new javax.swing.JList<>();
+        jScrollPane6 = new javax.swing.JScrollPane();
+        listBloqSusp = new javax.swing.JList<>();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
@@ -538,6 +562,25 @@ private String formateaItem(ProcesoPlanificable p, String estadoFallback) {
 
         panelColas.add(jScrollPane3);
 
+        listListosSusp.setModel(new javax.swing.AbstractListModel<String>() {
+            String[] strings = { "Item 1", "Item 2", "Item 3", "Item 4", "Item 5" };
+            public int getSize() { return strings.length; }
+            public String getElementAt(int i) { return strings[i]; }
+        });
+        jScrollPane5.setViewportView(listListosSusp);
+        listListosSusp.getAccessibleContext().setAccessibleName("");
+
+        panelColas.add(jScrollPane5);
+
+        listBloqSusp.setModel(new javax.swing.AbstractListModel<String>() {
+            String[] strings = { "Item 1", "Item 2", "Item 3", "Item 4", "Item 5" };
+            public int getSize() { return strings.length; }
+            public String getElementAt(int i) { return strings[i]; }
+        });
+        jScrollPane6.setViewportView(listBloqSusp);
+
+        panelColas.add(jScrollPane6);
+
         getContentPane().add(panelColas, java.awt.BorderLayout.CENTER);
 
         pack();
@@ -566,6 +609,23 @@ private String formateaItem(ProcesoPlanificable p, String estadoFallback) {
     }
     }//GEN-LAST:event_btnCargarActionPerformed
 
+    private static void fill(DefaultListModel<String> m,
+                         java.util.List<simuladorSO.modelo.ProcesoPlanificable> xs,
+                         String tag) {
+    m.clear();
+    if (xs == null) return;
+    for (var p : xs) {
+        if (p == null) continue;
+        m.addElement(formatear(p, tag));
+    }
+}
+
+    private static String formatear(simuladorSO.modelo.ProcesoPlanificable p, String tag) {
+        return String.format("%s(pid=%d) [%s] pc=%d mar=%d",
+                p.nombre(), p.pid(), tag, p.pc(), p.mar());
+    }
+
+    
 public void setAlgoritmoSeleccionado(String nombre) {
     SwingUtilities.invokeLater(() -> {
         try {
@@ -684,9 +744,13 @@ public void setAlgoritmoSeleccionado(String nombre) {
     private javax.swing.JScrollPane jScrollPane2;
     private javax.swing.JScrollPane jScrollPane3;
     private javax.swing.JScrollPane jScrollPane4;
+    private javax.swing.JScrollPane jScrollPane5;
+    private javax.swing.JScrollPane jScrollPane6;
     private javax.swing.JLabel lblCicloActual;
     private javax.swing.JLabel lblPCActual;
     private javax.swing.JLabel lblProcesoActual;
+    private javax.swing.JList<String> listBloqSusp;
+    private javax.swing.JList<String> listListosSusp;
     private javax.swing.JList<String> listaBloqueados;
     private javax.swing.JList<String> listaListos;
     private javax.swing.JList<String> listaTerminados;

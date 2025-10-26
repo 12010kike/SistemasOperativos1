@@ -34,6 +34,40 @@ public class ControladorReal implements ControladorSimulador {
     private final Set<ProcesoPlanificable> bloqueadosGUI = new LinkedHashSet<>();
 
     private final GeneradorProcesos generador;
+    private final simuladorSO.ed.Cola<ProcesoPlanificable> listosSusp = new simuladorSO.ed.ColaEnlazada<>();
+    private final simuladorSO.ed.Cola<ProcesoPlanificable> bloqSusp  = new simuladorSO.ed.ColaEnlazada<>();
+
+    private int capResidentes = 10;  
+    public void setCapResidentes(int cap) { this.capResidentes = Math.max(1, cap); }
+    
+    private int residentesActuales() {
+    int r = 0;
+    if (cpu.ejecutando() != null) r++;
+    var L = planificadorActual.getColaListos();
+    var B = planificadorActual.getColaBloqueados();
+    if (L != null) r += L.size();
+    if (B != null) r += B.size();
+    return r;
+}
+    private ProcesoPlanificable victimaParaSuspenderDeListos() {
+    var L = planificadorActual.getColaListos();
+    if (L == null || L.isEmpty()) return null;
+    return L.get(0); 
+}
+
+private ProcesoPlanificable victimaParaSuspenderDeBloqueados() {
+    var B = planificadorActual.getColaBloqueados();
+    if (B == null || B.isEmpty()) return null;
+    return B.get(0);
+}
+
+private java.util.List<ProcesoPlanificable> snapshotCola(simuladorSO.ed.Cola<ProcesoPlanificable> c) {
+    java.util.ArrayList<ProcesoPlanificable> out = new java.util.ArrayList<>();
+    for (ProcesoPlanificable p : c) out.add(p);
+    return out;
+}
+
+
 
 
     private static final class Stats {
@@ -169,7 +203,13 @@ public class ControladorReal implements ControladorSimulador {
         }
 
         señalizador.setTextoMetricas(texto);
-        señalizador.refrescarColas(listos, bloqueados, colaTerminados, null, null);
+        señalizador.refrescarColas(
+            listos, 
+            bloqueados, 
+            colaTerminados, 
+            snapshotCola(listosSusp),
+            snapshotCola(bloqSusp)
+        );
         señalizador.actualizarMetricas(cicloActual);
     }
 
@@ -181,7 +221,7 @@ public class ControladorReal implements ControladorSimulador {
                 "Proceso pasa a BLOQUEADOS (E/S)",
                 p.nombre() + " @ciclo " + ciclo
             );
-        }
+        suspenderSiExceso(ciclo);}
     }
 
     /** Actualiza contadores de la ventana deslizante (para %CPU y Th/100). */
@@ -208,13 +248,68 @@ public class ControladorReal implements ControladorSimulador {
 
     public void notificarIOCompletaPorPid(int pid) {
         bloqueadosGUI.removeIf(px -> px.pid() == pid);
+        reanudarSiHayHueco(0L);
+
     }
 
     public void notificarIOCompletaPorNombre(String nombre) {
         if (nombre != null && !nombre.isEmpty()) {
             bloqueadosGUI.removeIf(px -> nombre.equals(px.nombre()));
+            reanudarSiHayHueco(0L);
         }
     }
+
+    private void suspenderSiExceso(long ciclo) {
+    while (residentesActuales() > capResidentes) {
+        ProcesoPlanificable v = victimaParaSuspenderDeListos();
+        boolean deListos = true;
+        if (v == null) { 
+            v = victimaParaSuspenderDeBloqueados(); 
+            deListos = false;
+        }
+        if (v == null) break;
+
+        if (deListos) {
+            var L = planificadorActual.getColaListos();
+            java.util.ArrayList<ProcesoPlanificable> tmp = new java.util.ArrayList<>(L);
+            tmp.remove(v);
+            planificadorActual.clear();
+            for (ProcesoPlanificable p : tmp) planificadorActual.encolar(p, ciclo);
+            listosSusp.ofrecer(v);
+            señalizador.empujarEvento(EventoSistema.DISPATCH, "SUSPEND_READY", v.nombre()+" @ciclo "+ciclo);
+        } else {
+            var B = planificadorActual.getColaBloqueados();
+            java.util.ArrayList<ProcesoPlanificable> tmp = new java.util.ArrayList<>(B);
+            tmp.remove(v);
+            bloqSusp.ofrecer(v);
+            señalizador.empujarEvento(EventoSistema.DISPATCH, "SUSPEND_BLOCKED", v.nombre()+" @ciclo "+ciclo);
+        }
+    }
+}
+
+    private void reanudarSiHayHueco(long ciclo) {
+    while (residentesActuales() < capResidentes) {
+        ProcesoPlanificable p = null;
+
+        if (listosSusp.ver() != null) {               
+            p = listosSusp.sacar();                   
+            planificadorActual.encolar(p, ciclo);     
+            señalizador.empujarEvento(EventoSistema.DISPATCH,
+                    "RESUME_READY", p.nombre() + " @ciclo " + ciclo);
+            continue;
+        }
+
+        if (bloqSusp.ver() != null) {
+            p = bloqSusp.sacar();
+            planificadorActual.registrarProcesoBloqueado(p);
+            señalizador.empujarEvento(EventoSistema.DISPATCH,
+                    "RESUME_BLOCKED", p.nombre() + " @ciclo " + ciclo);
+            continue;
+        }
+
+        break;
+    }
+}
 
     public void notificarProcesoTerminado(ProcesoPlanificable p, long ciclo) {
     if (p != null) {
@@ -230,7 +325,7 @@ public class ControladorReal implements ControladorSimulador {
             "EXIT",
             p.nombre() + " (pid=" + p.pid() + ") @ciclo " + ciclo
         );
-
+        reanudarSiHayHueco(ciclo);
         if (ultimoPidEnCPU != null && ultimoPidEnCPU.equals(p.pid())) {
             ultimoPidEnCPU = null;
         }
@@ -261,6 +356,7 @@ public void setPolitica(String nombre) {
 
         if (señalizador instanceof SimuladorGUI gui) {
             gui.setAlgoritmoSeleccionado(nombre);
+            reanudarSiHayHueco(0L); 
         }
     }
 }
@@ -462,7 +558,8 @@ public void cargarConfig(String path) {
 
         generarProcesoManual(nombre, dur, tipo, ioCada, ioDura, prio, t0);
     }
-
+    suspenderSiExceso(0L);
+    reanudarSiHayHueco(0L);
     javax.swing.SwingUtilities.invokeLater(() -> actualizarVistaCicloACiclo(0L, ""));
     señalizador.empujarEvento(EventoSistema.DISPATCH, "Config cargada", path);
 }
@@ -510,6 +607,8 @@ public void cargarConfig(String path) {
         if (s.t0 < 0) s.t0 = t0;
 
         planificadorActual.encolar(p, t0);
+        suspenderSiExceso(t0);
+
 
         señalizador.empujarEvento(
             simuladorSO.nucleo.EventoSistema.DISPATCH,
