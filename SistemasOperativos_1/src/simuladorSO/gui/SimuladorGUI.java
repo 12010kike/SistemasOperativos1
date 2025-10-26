@@ -33,6 +33,13 @@ public class SimuladorGUI extends javax.swing.JFrame implements Señalizador {
     private volatile boolean suspendirEventosCombo = false;
     private DefaultListModel<String> modelListosSusp;
     private DefaultListModel<String> modelBloqSusp;
+    private javax.swing.JPanel panelMLFQ;
+    private javax.swing.JLabel  lblNiveles, lblAge;
+    private javax.swing.JSpinner spNiveles, spAge;
+    private javax.swing.JPanel panelQuantums;     // contenedor de spinners de quantums
+    private java.util.List<javax.swing.JSpinner> spQ = new java.util.ArrayList<>();
+    private javax.swing.JButton btnAplicarMLFQ;
+
 
         
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(SimuladorGUI.class.getName());
@@ -101,6 +108,53 @@ jPanel1Layout.setVerticalGroup(
     jPanel2.add(lblMsCiclo);
     jPanel2.add(spMsCiclo);
     jPanel2.add(tiraRR);
+    panelMLFQ = new javax.swing.JPanel(new java.awt.GridBagLayout());
+    panelMLFQ.setBorder(javax.swing.BorderFactory.createTitledBorder("MLFQ"));
+    java.awt.GridBagConstraints g = new java.awt.GridBagConstraints();
+    g.insets = new java.awt.Insets(2,2,2,2);
+    g.fill = java.awt.GridBagConstraints.HORIZONTAL;
+
+    lblNiveles = new javax.swing.JLabel("Niveles:");
+    spNiveles  = new javax.swing.JSpinner(new javax.swing.SpinnerNumberModel(3, 2, 8, 1));
+    lblAge     = new javax.swing.JLabel("Age (ciclos):");
+    spAge      = new javax.swing.JSpinner(new javax.swing.SpinnerNumberModel(20, 1, 10000, 1));
+
+    panelQuantums = new javax.swing.JPanel(new java.awt.GridLayout(0, 2, 6, 4));
+    rebuildQuantumsEditors((Integer) spNiveles.getValue());
+
+    btnAplicarMLFQ = new javax.swing.JButton("Aplicar");
+
+    int y = 0;
+    g.gridx=0; g.gridy=y; panelMLFQ.add(lblNiveles, g);
+    g.gridx=1;            panelMLFQ.add(spNiveles, g); y++;
+    g.gridx=0; g.gridy=y; panelMLFQ.add(lblAge, g);
+    g.gridx=1;            panelMLFQ.add(spAge, g); y++;
+    g.gridx=0; g.gridy=y; g.gridwidth=2;
+    panelMLFQ.add(panelQuantums, g); y++;
+    g.gridx=0; g.gridy=y; g.gridwidth=2;
+    panelMLFQ.add(btnAplicarMLFQ, g);
+
+    panelMLFQ.setVisible(false);
+    jPanel2.add(panelMLFQ);
+
+    setSingleChange(spNiveles, e -> {
+        int n = (Integer) spNiveles.getValue();
+        rebuildQuantumsEditors(n);
+    });
+
+    btnAplicarMLFQ.addActionListener(e -> {
+        if (controlador == null) return;
+
+        int n = (Integer) spNiveles.getValue();
+        int[] qs = new int[n];
+        for (int i = 0; i < n; i++) qs[i] = (Integer) spQ.get(i).getValue();
+
+        controlador.setMLFQ(n, qs);
+
+        empujarEvento(null, "MLFQ",
+                "Aplicado niveles=" + n + " q=" + java.util.Arrays.toString(qs));
+    });
+
 
     setSingleChange(spMsCiclo, e -> {
         if (controlador != null) controlador.setMsPorCiclo((int) spMsCiclo.getValue());
@@ -124,6 +178,20 @@ jPanel1Layout.setVerticalGroup(
     spQuantum.setEnabled(on && lblQuantum.isVisible());
     spMsCiclo.setEnabled(!on); 
 }
+    private void rebuildQuantumsEditors(int niveles) {
+    panelQuantums.removeAll();
+    spQ.clear();
+    for (int i = 0; i < niveles; i++) {
+        javax.swing.JLabel l = new javax.swing.JLabel("q nivel " + i + ":");
+        javax.swing.JSpinner sp = new javax.swing.JSpinner(
+                new javax.swing.SpinnerNumberModel(i == 0 ? 2 : i == 1 ? 4 : 8, 1, 9999, 1));
+        spQ.add(sp);
+        panelQuantums.add(l);
+        panelQuantums.add(sp);
+    }
+    panelQuantums.revalidate();
+    panelQuantums.repaint();
+}
 
     private void setSingleAction(javax.swing.AbstractButton b, java.awt.event.ActionListener l) {
         for (var a : b.getActionListeners()) b.removeActionListener(a);
@@ -142,12 +210,17 @@ public void setControlador(ControladorSimulador controlador) {
     controlador.setMsPorCiclo((int) spMsCiclo.getValue());
 
     String seleccion = (String) comboAlgoritmos.getSelectedItem();
+
     boolean esRR = "RR".equals(seleccion) || "Round Robin".equalsIgnoreCase(seleccion);
     lblQuantum.setVisible(esRR);
     spQuantum.setVisible(esRR);
     if (esRR) {
         controlador.setQuantumRR((Integer) spQuantum.getValue());
     }
+
+    boolean esMLFQ = "MLFQ".equalsIgnoreCase(seleccion);
+    if (panelMLFQ != null) panelMLFQ.setVisible(esMLFQ);
+
 }
 
 private boolean listenersInicializados = false;
@@ -190,6 +263,10 @@ comboAlgoritmos.addActionListener(e -> {
         }
         controlador.setQuantumRR((Integer) spQuantum.getValue());
     }
+    
+    boolean esMLFQ = "MLFQ".equalsIgnoreCase(seleccion);
+    if (panelMLFQ != null) panelMLFQ.setVisible(esMLFQ);
+
 });
 
 
@@ -621,10 +698,11 @@ private String formateaItem(ProcesoPlanificable p, String estadoFallback) {
 }
 
     private static String formatear(simuladorSO.modelo.ProcesoPlanificable p, String tag) {
-        return String.format("%s(pid=%d) [%s] pc=%d mar=%d",
-                p.nombre(), p.pid(), tag, p.pc(), p.mar());
-    }
-
+    int prio = 0;
+    try { prio = p.prioridad(); } catch (Throwable ignore) {}
+    return String.format("%s(pid=%d) [%s] pc=%d mar=%d prio=%d",
+            p.nombre(), p.pid(), tag, p.pc(), p.mar(), prio);
+}
     
 public void setAlgoritmoSeleccionado(String nombre) {
     SwingUtilities.invokeLater(() -> {
@@ -644,6 +722,8 @@ public void setAlgoritmoSeleccionado(String nombre) {
                 spQuantum.setValue(rr.getQuantum());
             }
         }
+        boolean esMLFQ = "MLFQ".equalsIgnoreCase(nombre);
+        if (panelMLFQ != null) panelMLFQ.setVisible(esMLFQ);
     });
 }
 

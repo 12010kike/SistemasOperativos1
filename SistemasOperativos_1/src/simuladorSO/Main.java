@@ -112,7 +112,8 @@ public class Main {
                     }
 
                     if (controlador.estaCorriendo()) {
-
+                        controlador.getPlanificadorActual().reordenarColas(ciclo);
+                        // vista.empujarEvento(null, "AGE", "reordenado (ciclo " + ciclo + ")");
                         ProcesoPlanificable procesoEnCPU = cpu.ejecutando();
 
                         if (procesoEnCPU != null) {
@@ -159,8 +160,37 @@ public class Main {
                                 controlador.getPlanificadorActual().alVencerQuantum(procesoEnCPU, ciclo);
                                 despachador.expropiarActual(ciclo);
                                 procesoEnCPU = null;
+                                ProcesoPlanificable sig = controlador.getPlanificadorActual().seleccionarSiguiente(ciclo);
+                                    if (sig != null) {
+                                        controlador.notificarPosibleDesbloqueo(sig);
+                                        controlador.marcarPrimeraRespuestaSiAplica(sig.pid(), ciclo);
+                                        despachador.despacharACPU(sig, ciclo);
+                                        procesoEnCPU = sig;
+                                    }
+
                             }
                         }
+                        if (procesoEnCPU != null
+                                && controlador.getPlanificadorActual() instanceof PlanificadorMLFQ mlfq) {
+                            int nivelActual = Math.max(0, procesoEnCPU.prioridad());
+                            int qNivel = mlfq.getQuantumNivel(nivelActual);
+                            if (procesoEnCPU.quantumConsumido() >= qNivel) {
+                                controlador.getPlanificadorActual().alVencerQuantum(procesoEnCPU, ciclo);
+                                vista.empujarEvento(null, "TIME-SLICE",
+                                procesoEnCPU.nombre() + " venció quantum en nivel " + procesoEnCPU.prioridad());
+                                despachador.expropiarActual(ciclo);
+                                procesoEnCPU = null;
+                                ProcesoPlanificable sig = controlador.getPlanificadorActual().seleccionarSiguiente(ciclo);
+                                if (sig != null) {
+                                    controlador.notificarPosibleDesbloqueo(sig);
+                                    controlador.marcarPrimeraRespuestaSiAplica(sig.pid(), ciclo);
+                                    despachador.despacharACPU(sig, ciclo);
+                                    procesoEnCPU = sig;
+                                }
+
+                            }
+                        }
+
 
                         if (procesoEnCPU != null && controlador.getPlanificadorActual().debeExpropiar(procesoEnCPU)) {
                             controlador.getPlanificadorActual().reencolarPorPreempcion(procesoEnCPU, ciclo);

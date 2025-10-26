@@ -52,6 +52,10 @@ public class PlanificadorMLFQ implements PlanificadorCortoPlazo {
         }
         this.envejecimiento = (envejecimiento <= 0) ? 20 : envejecimiento;
     }
+    
+    public int getQuantumNivel(int nivel) {
+    return quantums[clampNivel(nivel)];
+}
 
 
     private void removerDeTodosLosNiveles_NoLock(ProcesoPlanificable p) {
@@ -162,17 +166,37 @@ public class PlanificadorMLFQ implements PlanificadorCortoPlazo {
 
     @Override public void alArribar(ProcesoPlanificable p, ProcesoPlanificable corriendo, long ciclo) { /* opcional/log */ }
 
-    @Override
-    public void reordenarColas(long ciclo) {
-        try {
-            mutex.acquire();
-            aplicarEnvejecimiento_NoLock(ciclo);
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-        } finally {
-            mutex.release();
+@Override
+public void reordenarColas(long ciclo) {
+    try {
+        mutex.acquire();
+        int promovidos = 0;
+        for (int lvl = 1; lvl < niveles.length; lvl++) {
+            int n = niveles[lvl].tamano();
+            for (int i = 0; i < n; i++) {
+                Entry e = niveles[lvl].sacar();
+                if (e == null) break;
+                if (ciclo - e.tArribo >= envejecimiento) {
+                    int destino = lvl - 1;
+                    e.nivel = destino;
+                    e.tArribo = ciclo;
+                    niveles[destino].ofrecer(e);
+                    promovidos++;
+                } else {
+                    e.nivel = lvl;
+                    niveles[lvl].ofrecer(e);
+                }
+            }
         }
+        if (promovidos > 0) {
+            System.out.println("[MLFQ] AGE: " + promovidos + " promovidos @ciclo " + ciclo);
+        }
+    } catch (InterruptedException ie) {
+        Thread.currentThread().interrupt();
+    } finally {
+        mutex.release();
     }
+}
 
     @Override
     public void reconfigurar(Object delta) {

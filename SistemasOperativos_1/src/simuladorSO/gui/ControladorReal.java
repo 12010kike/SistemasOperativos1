@@ -125,6 +125,15 @@ private java.util.List<ProcesoPlanificable> snapshotCola(simuladorSO.ed.Cola<Pro
         }
         this.gestorES.setMsPorCiclo((int) this.tickMs);
     }
+    private void migrarColas(PlanificadorCortoPlazo desde, PlanificadorCortoPlazo hacia, long ciclo) {
+        if (desde == null || hacia == null || desde == hacia) return;
+
+        var listos = desde.getColaListos();
+        if (listos != null) for (var p : listos) if (p != null) hacia.encolar(p, ciclo);
+
+        var bloqs = desde.getColaBloqueados();
+        if (bloqs != null) for (var p : bloqs) if (p != null) hacia.registrarProcesoBloqueado(p);
+    }
 
     public boolean estaCorriendo() { return corriendo; }
     public long getTickMs() { return tickMs; }
@@ -345,20 +354,32 @@ private java.util.List<ProcesoPlanificable> snapshotCola(simuladorSO.ed.Cola<Pro
         señalizador.empujarEvento(EventoSistema.DISPATCH, "Simulación pausada.", "");
     }
 
-    @Override
+@Override
 public void setPolitica(String nombre) {
     PlanificadorCortoPlazo nuevo = planificadores.get(nombre);
-    if (nuevo != null) {
-        this.planificadorActual = nuevo;
-        if (gestorES != null) gestorES.setPlanificador(planificadorActual);
-        señalizador.empujarEvento(EventoSistema.DISPATCH, "Política cambiada a " + nombre, "");
-        System.out.println("Controlador: Política cambiada a " + nombre);
+    if (nuevo == null) return;
 
-        if (señalizador instanceof SimuladorGUI gui) {
-            gui.setAlgoritmoSeleccionado(nombre);
-            reanudarSiHayHueco(0L); 
-        }
+    ProcesoPlanificable corriendo = cpu.ejecutando();
+    if (corriendo != null) {
+        try { despachador.expropiarActual(0L); } catch (Exception ignore) {}
+        planificadorActual.reencolarPorPreempcion(corriendo, 0L);
     }
+
+    PlanificadorCortoPlazo viejo = this.planificadorActual;
+
+    migrarColas(viejo, nuevo, 0L);
+
+    this.planificadorActual = nuevo;
+    if (gestorES != null) gestorES.setPlanificador(planificadorActual);
+
+    señalizador.empujarEvento(EventoSistema.DISPATCH, "Política cambiada a " + nombre, "");
+    System.out.println("Controlador: Política cambiada a " + nombre);
+
+    if (señalizador instanceof SimuladorGUI gui) {
+        gui.setAlgoritmoSeleccionado(nombre);
+    }
+
+    reanudarSiHayHueco(0L);
 }
     
 
@@ -443,7 +464,40 @@ public void reset() {
         }
     }
 
-    @Override public void setMLFQ(int niveles, int[] quantums) {}
+@Override
+public void setMLFQ(int niveles, int[] quantums) {
+    if (niveles < 2) niveles = 3;
+    if (quantums == null || quantums.length != niveles) quantums = new int[]{2,4,8};
+    final long AGE = 20L;
+
+    ProcesoPlanificable corriendo = cpu.ejecutando();
+    if (corriendo != null) {
+        try { despachador.expropiarActual(0L); } catch (Exception ignore) {}
+        planificadorActual.reencolarPorPreempcion(corriendo, 0L);
+    }
+
+    PlanificadorCortoPlazo viejo = this.planificadorActual;
+    PlanificadorCortoPlazo mlfq = planificadores.get("MLFQ");
+    if (!(mlfq instanceof simuladorSO.planificador.PlanificadorMLFQ)) {
+        mlfq = new simuladorSO.planificador.PlanificadorMLFQ(niveles, quantums, AGE);
+        planificadores.put("MLFQ", mlfq);
+    } else {
+        mlfq.reconfigurar(quantums.clone());
+    }
+
+    migrarColas(viejo, mlfq, 0L);
+
+    this.planificadorActual = mlfq;
+    if (gestorES != null) gestorES.setPlanificador(planificadorActual);
+
+    señalizador.empujarEvento(EventoSistema.DISPATCH,
+            "Política cambiada a MLFQ",
+            "niveles=" + niveles + " | q=" + java.util.Arrays.toString(quantums));
+
+    if (señalizador instanceof SimuladorGUI gui) gui.setAlgoritmoSeleccionado("MLFQ");
+
+    reanudarSiHayHueco(0L);
+}
     @Override public void generarProcesosAleatorios(int cantidad) {}
 @Override
 public void guardarConfig(String path) {
