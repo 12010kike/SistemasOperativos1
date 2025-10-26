@@ -17,7 +17,6 @@ public class Proceso implements ProcesoPlanificable {
 
     public Proceso(PCB pcb) { this.pcb = pcb; }
 
-    // Delegación ProcesoPlanificable
     @Override public void ejecutarUnCiclo(long ciclo) { pcb.ejecutarUnCiclo(ciclo); }
     @Override public boolean debeSolicitarES(long ciclo) { return pcb.debeSolicitarES(ciclo); }
     @Override public boolean completo() { return pcb.completo(); }
@@ -26,7 +25,6 @@ public class Proceso implements ProcesoPlanificable {
     @Override public int quantumConsumido() { return pcb.quantumConsumido(); }
     @Override public void setPrioridad(int p) { pcb.setPrioridad(p); }
 
-    // Delegación PCBVista
     @Override public long pid() { return pcb.pid(); }
     @Override public String nombre() { return pcb.nombre(); }
     @Override public EstadoProceso estado() { return pcb.estado(); }

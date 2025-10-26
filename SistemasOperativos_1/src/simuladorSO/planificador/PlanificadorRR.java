@@ -18,29 +18,40 @@ import simuladorSO.modelo.ProcesoPlanificable;
 
 public class PlanificadorRR implements PlanificadorCortoPlazo {
 
-    private final Cola<ProcesoPlanificable> cola = new ColaEnlazada<>();
+    private final ColaEnlazada<ProcesoPlanificable> cola = new ColaEnlazada<>();
     private final Semaphore mutex = new Semaphore(1, true);
     private int quantum = 3;
 
-    // --- Colas de apoyo para la GUI ---
     private final ArrayList<ProcesoPlanificable> listosSnapshot = new ArrayList<>();
     private final LinkedList<ProcesoPlanificable> bloqueados    = new LinkedList<>();
     private final LinkedList<ProcesoPlanificable> terminados    = new LinkedList<>();
 
+    private void refrescarSnapshot_NoLock() {
+        listosSnapshot.clear();
+        listosSnapshot.addAll(cola.toList());
+    }
+
     public void setQuantum(int nuevo) { if (nuevo > 0) this.quantum = nuevo; }
     public int getQuantum() { return quantum; }
 
+    @Override
+    public void reconfigurar(Object delta) {
+        if (delta instanceof Integer q && q > 0) setQuantum(q);
+    }
+
+    @Override
+    public PoliticaPlanificacion politica() { return PoliticaPlanificacion.RR; }
 
     @Override
     public void encolar(ProcesoPlanificable p, long ciclo) {
         if (p == null) return;
         try {
             mutex.acquire();
-            // si vuelve de E/S, ya no está bloqueado
             bloqueados.remove(p);
-            cola.ofrecer(p);
-            // snapshot para la GUI
-            listosSnapshot.add(p);
+            if (!cola.contiene(p)) {
+                cola.ofrecer(p);
+            }
+            refrescarSnapshot_NoLock();
         } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
         } finally {
@@ -54,10 +65,9 @@ public class PlanificadorRR implements PlanificadorCortoPlazo {
             mutex.acquire();
             ProcesoPlanificable x = cola.sacar();
             if (x != null) {
-                // sale de listos ⇒ quítalo del snapshot
-                listosSnapshot.remove(x);
-                // por si quedaba marcado como bloqueado
-                bloqueados.remove(x);
+                listosSnapshot.remove(x);   
+                bloqueados.remove(x);       
+                try { x.reiniciarQuantum(); } catch (Throwable ignore) {}
             }
             return x;
         } catch (InterruptedException ignored) {
@@ -70,32 +80,12 @@ public class PlanificadorRR implements PlanificadorCortoPlazo {
 
     @Override
     public void alVencerQuantum(ProcesoPlanificable c, long ciclo) {
-        if (c != null) {
-            System.out.println("[RR] Quantum expiró para " + c.nombre() +
-                               " (q=" + quantum + ") en ciclo " + ciclo);
-            c.reiniciarQuantum();
-            encolar(c, ciclo); // vuelve a listos
-        }
-    }
-
-    @Override
-    public void alArribar(ProcesoPlanificable p, ProcesoPlanificable corriendo, long ciclo) {
-        // RR no expropia por llegada; noop
-    }
-
-    @Override public void reordenarColas(long ciclo) { }
-    @Override public void reconfigurar(Object delta) { if (delta instanceof Integer q) setQuantum(q); }
-    @Override public PoliticaPlanificacion politica() { return PoliticaPlanificacion.RR; }
-
-    // --- Requerido por PlanificadorCortoPlazo: registrar bloqueados ---
-    @Override
-    public void registrarProcesoBloqueado(ProcesoPlanificable p) {
-        if (p == null) return;
+        if (c == null) return;
         try {
             mutex.acquire();
-            listosSnapshot.remove(p);      // ya no está en listos
-            bloqueados.remove(p);          // evita duplicados
-            bloqueados.addLast(p);
+            try { c.reiniciarQuantum(); } catch (Throwable ignore) {}
+            cola.ofrecer(c);
+            refrescarSnapshot_NoLock();
         } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
         } finally {
@@ -103,15 +93,35 @@ public class PlanificadorRR implements PlanificadorCortoPlazo {
         }
     }
 
-    // --- Getters para la GUI ---
+    @Override public void alArribar(ProcesoPlanificable p, ProcesoPlanificable corriendo, long ciclo) { /* no-op */ }
+    @Override public void reordenarColas(long ciclo) { /* no-op */ }
+
+    @Override public boolean debeExpropiar(ProcesoPlanificable corriendo) { return false; }
+    @Override public void reencolarPorPreempcion(ProcesoPlanificable p, long ciclo) { /* no-op */ }
+
+    @Override
+    public void registrarProcesoBloqueado(ProcesoPlanificable p) {
+        if (p == null) return;
+        try {
+            mutex.acquire();
+            cola.remover(p);               
+            listosSnapshot.remove(p);
+            if (!bloqueados.contains(p)) bloqueados.addLast(p);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        } finally {
+            mutex.release();
+        }
+    }
+
     @Override
     public List<ProcesoPlanificable> getColaListos() {
         try {
             mutex.acquire();
-            return new ArrayList<>(listosSnapshot); // vista estable
+            return new ArrayList<>(listosSnapshot);
         } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
-            return new ArrayList<>();
+            return List.of();
         } finally {
             mutex.release();
         }
@@ -119,11 +129,42 @@ public class PlanificadorRR implements PlanificadorCortoPlazo {
 
     @Override
     public List<ProcesoPlanificable> getColaBloqueados() {
-        return bloqueados;   // la GUI solo lee
+        try {
+            mutex.acquire();
+            return new ArrayList<>(bloqueados);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+            return List.of();
+        } finally {
+            mutex.release();
+        }
     }
 
     @Override
     public List<ProcesoPlanificable> getColaTerminados() {
-        return terminados;   // llena donde corresponda si marcas terminados aquí
+        try {
+            mutex.acquire();
+            return new ArrayList<>(terminados);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+            return List.of();
+        } finally {
+            mutex.release();
+        }
+    }
+
+    @Override
+    public void clear() {
+        try {
+            mutex.acquire();
+            cola.limpiar();           
+            bloqueados.clear();
+            terminados.clear();
+            listosSnapshot.clear();
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        } finally {
+            mutex.release();
+        }
     }
 }

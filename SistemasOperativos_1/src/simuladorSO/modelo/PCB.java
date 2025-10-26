@@ -15,8 +15,8 @@ public class PCB implements ProcesoPlanificable {
 
     private final int totalInstrucciones;
     private final TipoProceso tipo;
-    private final int ioCadaK;      // cada K instrucciones pide E/S (solo IO_BOUND)
-    private final int ioDuraM;      // duración de la E/S en ciclos (lo usa GestorES)
+    private final int ioCadaK;      
+    private final int ioDuraM;      
 
     private final long cicloLlegada;
 
@@ -43,7 +43,6 @@ public class PCB implements ProcesoPlanificable {
         this.restantes = totalInstrucciones;
     }
 
-    // ===== PCBVista =====
     @Override public long pid() { return pid; }
     @Override public String nombre() { return nombre; }
     @Override public EstadoProceso estado() { return estado; }
@@ -57,7 +56,6 @@ public class PCB implements ProcesoPlanificable {
     @Override public int prioridad() { return prioridad; }
     @Override public long cicloLlegada() { return cicloLlegada; }
 
-    // ===== ProcesoPlanificable =====
     @Override
     public void ejecutarUnCiclo(long ciclo) {
         if (restantes <= 0) return;

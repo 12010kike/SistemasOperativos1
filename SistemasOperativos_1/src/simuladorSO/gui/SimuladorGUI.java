@@ -29,6 +29,11 @@ public class SimuladorGUI extends javax.swing.JFrame implements Señalizador {
     private javax.swing.JSpinner spMsCiclo;
     private javax.swing.JLabel lblMARActual;
     private javax.swing.JLabel lblStatusActual;
+    private simuladorSO.metrica.GraficoMetricaSwing grafUtil;
+    private volatile boolean suspendirEventosCombo = false;
+
+    
+
     
 
     
@@ -53,8 +58,8 @@ jPanel1Layout.setHorizontalGroup(
             .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                 .addComponent(lblProcesoActual, javax.swing.GroupLayout.PREFERRED_SIZE, 213, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addComponent(lblPCActual, javax.swing.GroupLayout.PREFERRED_SIZE, 161, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addComponent(lblMARActual)     // ← nuevo
-                .addComponent(lblStatusActual)) // ← nuevo
+                .addComponent(lblMARActual)     
+                .addComponent(lblStatusActual)) 
             .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
 );
 
@@ -66,17 +71,22 @@ jPanel1Layout.setVerticalGroup(
             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
             .addComponent(lblPCActual)
             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-            .addComponent(lblMARActual)        // ← nuevo
+            .addComponent(lblMARActual)        
             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-            .addComponent(lblStatusActual)     // ← nuevo
+            .addComponent(lblStatusActual)     
             .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
 );
 
 
-    // 1) Panel Métricas con FlowLayout (ANTES de add)
     jPanel2.setLayout(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 8, 8));
+    grafUtil = new simuladorSO.metrica.GraficoMetricaSwing();
+    grafUtil.setTitulos("Utilización CPU", "Ciclos", "0..1");
+    grafUtil.setPreferredSize(new java.awt.Dimension(260, 120));
 
-    // 2) Controles RR (ocultos por defecto)
+    jPanel2.add(grafUtil);   
+    jPanel2.revalidate();
+    jPanel2.repaint();
+
     lblQuantum = new javax.swing.JLabel("Quantum RR:");
     spQuantum  = new javax.swing.JSpinner(new javax.swing.SpinnerNumberModel(3, 1, 999, 1));
     lblQuantum.setVisible(false);
@@ -87,18 +97,13 @@ jPanel1Layout.setVerticalGroup(
     tiraRR.add(lblQuantum);
     tiraRR.add(spQuantum);
 
-    // 3) Control de velocidad (ms/ciclo)
     lblMsCiclo = new javax.swing.JLabel("ms/ciclo:");
     spMsCiclo  = new javax.swing.JSpinner(new javax.swing.SpinnerNumberModel(50, 1, 2000, 1));
-    // (opcional) ancho fijo
-    // spMsCiclo.setPreferredSize(new java.awt.Dimension(60, spMsCiclo.getPreferredSize().height));
 
-    // 4) Añadir al panel Métricas (orden: texto métricas, ms/ciclo, RR)
     jPanel2.add(lblMsCiclo);
     jPanel2.add(spMsCiclo);
     jPanel2.add(tiraRR);
 
-    // 5) Listeners ÚNICOS
     setSingleChange(spMsCiclo, e -> {
         if (controlador != null) controlador.setMsPorCiclo((int) spMsCiclo.getValue());
     });
@@ -106,7 +111,6 @@ jPanel1Layout.setVerticalGroup(
     jPanel2.revalidate();
     jPanel2.repaint();
 
-    // ÚNICO listener del spinner
     setSingleChange(spQuantum, e -> {
         if (controlador != null && lblQuantum.isVisible()) {
             controlador.setQuantumRR((Integer) spQuantum.getValue());
@@ -120,7 +124,7 @@ jPanel1Layout.setVerticalGroup(
     btnPausar.setEnabled(on);
     comboAlgoritmos.setEnabled(!on);
     spQuantum.setEnabled(on && lblQuantum.isVisible());
-    spMsCiclo.setEnabled(!on); // cambiar velocidad sólo cuando está detenido (recomendado)
+    spMsCiclo.setEnabled(!on); 
 }
 
     private void setSingleAction(javax.swing.AbstractButton b, java.awt.event.ActionListener l) {
@@ -154,7 +158,6 @@ public void configurarListeners() {
     if (listenersInicializados) return;
     listenersInicializados = true;
 
-    // Botones: limpiar y dejar 1 listener
     setSingleAction(btnIniciar, e -> {
     if (controlador != null) {
         controlador.play();
@@ -170,32 +173,31 @@ setSingleAction(btnPausar, e -> {
 
     setSingleAction(btnCrearProceso, e -> { if (controlador != null) mostrarDialogoNuevoProceso(); });
 
-    // Combo: limpia posibles listeners y añade 1
     for (var a : comboAlgoritmos.getActionListeners()) comboAlgoritmos.removeActionListener(a);
-    comboAlgoritmos.addActionListener(e -> {
-        if (controlador == null) return;
-        String seleccion = (String) comboAlgoritmos.getSelectedItem();
-        controlador.setPolitica(seleccion);
+comboAlgoritmos.addActionListener(e -> {
+    if (suspendirEventosCombo) return;   
 
-        boolean esRR = "RR".equals(seleccion) || "Round Robin".equalsIgnoreCase(seleccion);
-        lblQuantum.setVisible(esRR);
-        spQuantum.setVisible(esRR);
+    if (controlador == null) return;
+    String seleccion = (String) comboAlgoritmos.getSelectedItem();
+    controlador.setPolitica(seleccion);
 
-        if (esRR) {
-            var plan = controlador.getPlanificadorActual();
-            if (plan instanceof simuladorSO.planificador.PlanificadorRR rr) {
-                spQuantum.setValue(rr.getQuantum());
-            }
-            controlador.setQuantumRR((Integer) spQuantum.getValue());
+    boolean esRR = "RR".equals(seleccion) || "Round Robin".equalsIgnoreCase(seleccion);
+    lblQuantum.setVisible(esRR);
+    spQuantum.setVisible(esRR);
+
+    if (esRR) {
+        var plan = controlador.getPlanificadorActual();
+        if (plan instanceof simuladorSO.planificador.PlanificadorRR rr) {
+            spQuantum.setValue(rr.getQuantum());
         }
-    });
+        controlador.setQuantumRR((Integer) spQuantum.getValue());
+    }
+});
+
 
 }
 
-    /**
-     * Inicializa los DefaultListModel y los asigna a las JList.
-     * Esto nos permite añadir y quitar elementos de las listas dinámicamente.
-     */
+    
     private void inicializarModels() {
         modelListos = new DefaultListModel<>();
         listaListos.setModel(modelListos);
@@ -211,48 +213,81 @@ setSingleAction(btnPausar, e -> {
                 p.nombre(), p.pid(), p.estado(), p.pc(), p.mar(), p.prioridad());
     }
 
-    // --- FIN DE MODIFICACIONES ---
-    
-    // --- INICIO DE MODIFICACIONES: IMPLEMENTACIÓN DE LA INTERFAZ Señalizador ---
 
     @Override
-public void refrescarCPU(ProcesoPlanificable enEjecucion) {
-    SwingUtilities.invokeLater(() -> {
-        if (enEjecucion != null) {
-            lblProcesoActual.setText("Proceso: " + enEjecucion.nombre() + " (PID: " + enEjecucion.pid() + ")");
-            lblPCActual.setText("PC: " + enEjecucion.pc());
-            lblMARActual.setText("MAR: " + enEjecucion.mar());          
-            lblStatusActual.setText("STATUS: " + enEjecucion.estado());  
-        } else {
+    public void plotUtil(double valor01) {
+        SwingUtilities.invokeLater(() -> {
+            if (grafUtil != null) grafUtil.agregarPunto(valor01);
+        });
+    }
+
+@Override
+public void refrescarCPU(ProcesoPlanificable p) {
+    javax.swing.SwingUtilities.invokeLater(() -> {
+        if (p == null) {
             lblProcesoActual.setText("Proceso: Ninguno");
-            lblPCActual.setText("PC: 0");
-            lblMARActual.setText("MAR: —");          
-            lblStatusActual.setText("STATUS: —");    
+            lblPCActual.setText("PC: —");
+            lblMARActual.setText("MAR: —");
+            lblStatusActual.setText("STATUS: SO"); 
+            return;
         }
+
+        lblProcesoActual.setText("Proceso: " + p.nombre() + " (PID: " + p.pid() + ")");
+        lblPCActual.setText("PC: " + p.pc());
+        lblMARActual.setText("MAR: " + p.mar());
+
+        String st = "RUNNING";
+        try {
+            var est = p.estado(); 
+            if (est != null) {
+                String n = est.name();
+                if ("TERMINATED".equals(n) || n.contains("BLOCK")) st = n;
+            }
+        } catch (Throwable ignore) {}
+
+        lblStatusActual.setText("STATUS: " + st);
     });
 }
+
 
     
     public void setAlgoritmosDisponibles(String[] nombres) {
     comboAlgoritmos.setModel(new javax.swing.DefaultComboBoxModel<>(nombres));
-    }
+}
+
+
 
     @Override
-    public void refrescarColas(List<ProcesoPlanificable> listos, List<ProcesoPlanificable> bloqueados,
-                               List<ProcesoPlanificable> terminados, List<ProcesoPlanificable> listosSuspendidos,
-                               List<ProcesoPlanificable> bloqueadosSuspendidos) {
-        SwingUtilities.invokeLater(() -> {
-            modelListos.clear();
-                if (listos != null) for (ProcesoPlanificable p : listos) modelListos.addElement(pcbLine(p));
+public void refrescarColas(List<ProcesoPlanificable> listos,
+                           List<ProcesoPlanificable> bloqueados,
+                           List<ProcesoPlanificable> terminados,
+                           List<ProcesoPlanificable> listosSusp,
+                           List<ProcesoPlanificable> bloqSusp) {
+    SwingUtilities.invokeLater(() -> {
+        modelListos.clear();
+        for (var p : (listos != null ? listos : java.util.List.<ProcesoPlanificable>of()))
+            modelListos.addElement(formateaItem(p, "READY"));
 
-                modelBloqueados.clear();
-                if (bloqueados != null) for (ProcesoPlanificable p : bloqueados) modelBloqueados.addElement(pcbLine(p));
+        modelBloqueados.clear();
+        for (var p : (bloqueados != null ? bloqueados : java.util.List.<ProcesoPlanificable>of()))
+            modelBloqueados.addElement(formateaItem(p, "BLOCKED"));
 
-                modelTerminados.clear();
-                if (terminados != null) for (ProcesoPlanificable p : terminados) modelTerminados.addElement(pcbLine(p));
+        modelTerminados.clear();
+        for (var p : (terminados != null ? terminados : java.util.List.<ProcesoPlanificable>of()))
+            modelTerminados.addElement(formateaItem(p, "TERMINATED"));
+    });
+}
 
-        });
-    }
+private String formateaItem(ProcesoPlanificable p, String estadoFallback) {
+    String estado = estadoFallback;
+    try {
+        var e = p.estado();               // si existe en tu modelo
+        if (e != null) estado = e.name();
+    } catch (Throwable ignore) {}
+    return String.format("%s(pid=%d) [%s] pc=%d mar=%d",
+            p.nombre(), p.pid(), estado, p.pc(), p.mar());
+}
+
 
     @Override
     public void empujarEvento(EventoSistema t, String msg, String det) {
@@ -281,11 +316,8 @@ public void refrescarCPU(ProcesoPlanificable enEjecucion) {
 
     @Override
     public void refrescarConfig() {
-        // Lógica para refrescar la configuración si fuera necesario
     }
     
-    // --- FIN DE MODIFICACIONES ---
-
     /**
      * This method is called from within the constructor to initialize the form.
      * WARNING: Do NOT modify this code. The content of this method is always
@@ -302,6 +334,9 @@ public void refrescarCPU(ProcesoPlanificable enEjecucion) {
         btnIniciar = new javax.swing.JButton();
         btnPausar = new javax.swing.JButton();
         btnCrearProceso = new javax.swing.JButton();
+        btnReset = new javax.swing.JButton();
+        btnGuardar = new javax.swing.JButton();
+        btnCargar = new javax.swing.JButton();
         panelDerecho = new javax.swing.JPanel();
         jPanel1 = new javax.swing.JPanel();
         lblProcesoActual = new javax.swing.JLabel();
@@ -331,6 +366,27 @@ public void refrescarCPU(ProcesoPlanificable enEjecucion) {
 
         btnCrearProceso.setText("Crear proceso");
 
+        btnReset.setText("Reset");
+        btnReset.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnResetActionPerformed(evt);
+            }
+        });
+
+        btnGuardar.setText("Guardar");
+        btnGuardar.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnGuardarActionPerformed(evt);
+            }
+        });
+
+        btnCargar.setText("Cargar");
+        btnCargar.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnCargarActionPerformed(evt);
+            }
+        });
+
         javax.swing.GroupLayout panelControlLayout = new javax.swing.GroupLayout(panelControl);
         panelControl.setLayout(panelControlLayout);
         panelControlLayout.setHorizontalGroup(
@@ -345,7 +401,13 @@ public void refrescarCPU(ProcesoPlanificable enEjecucion) {
                         .addComponent(comboAlgoritmos, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addGap(69, 69, 69)
                         .addComponent(btnIniciar)))
-                .addContainerGap(224, Short.MAX_VALUE))
+                .addGap(18, 18, 18)
+                .addComponent(btnReset)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGroup(panelControlLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(btnGuardar)
+                    .addComponent(btnCargar))
+                .addContainerGap(50, Short.MAX_VALUE))
             .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, panelControlLayout.createSequentialGroup()
                 .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                 .addComponent(btnCrearProceso)
@@ -358,9 +420,13 @@ public void refrescarCPU(ProcesoPlanificable enEjecucion) {
                 .addGroup(panelControlLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jLabel1)
                     .addComponent(comboAlgoritmos, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(btnIniciar))
+                    .addComponent(btnIniciar)
+                    .addComponent(btnReset)
+                    .addComponent(btnGuardar))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(btnPausar)
+                .addGroup(panelControlLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(btnPausar)
+                    .addComponent(btnCargar))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(btnCrearProceso)
                 .addContainerGap(20, Short.MAX_VALUE))
@@ -477,6 +543,50 @@ public void refrescarCPU(ProcesoPlanificable enEjecucion) {
         pack();
     }// </editor-fold>//GEN-END:initComponents
 
+    private void btnResetActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnResetActionPerformed
+    if (controlador != null) {
+        controlador.reset();     
+        setCorriendo(false);    
+        areaLog.setText("");     
+    }
+    }//GEN-LAST:event_btnResetActionPerformed
+
+    private void btnGuardarActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnGuardarActionPerformed
+    javax.swing.JFileChooser fc = new javax.swing.JFileChooser();
+    fc.setSelectedFile(new java.io.File("sim.cfg"));
+    if (fc.showSaveDialog(this) == javax.swing.JFileChooser.APPROVE_OPTION) {
+        controlador.guardarConfig(fc.getSelectedFile().getAbsolutePath());
+    }
+    }//GEN-LAST:event_btnGuardarActionPerformed
+
+    private void btnCargarActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnCargarActionPerformed
+    javax.swing.JFileChooser fc = new javax.swing.JFileChooser();
+    if (fc.showOpenDialog(this) == javax.swing.JFileChooser.APPROVE_OPTION) {
+        controlador.cargarConfig(fc.getSelectedFile().getAbsolutePath());
+    }
+    }//GEN-LAST:event_btnCargarActionPerformed
+
+public void setAlgoritmoSeleccionado(String nombre) {
+    SwingUtilities.invokeLater(() -> {
+        try {
+            suspendirEventosCombo = true;                
+            comboAlgoritmos.setSelectedItem(nombre);
+        } finally {
+            suspendirEventosCombo = false;
+        }
+
+        boolean esRR = "RR".equals(nombre) || "Round Robin".equalsIgnoreCase(nombre);
+        lblQuantum.setVisible(esRR);
+        spQuantum.setVisible(esRR);
+        if (esRR && controlador != null) {
+            var plan = controlador.getPlanificadorActual();
+            if (plan instanceof simuladorSO.planificador.PlanificadorRR rr) {
+                spQuantum.setValue(rr.getQuantum());
+            }
+        }
+    });
+}
+
     /**
      * @param args the command line arguments
      */
@@ -515,7 +625,6 @@ public void refrescarCPU(ProcesoPlanificable enEjecucion) {
     javax.swing.JSpinner spPrio   = new javax.swing.JSpinner(new javax.swing.SpinnerNumberModel(0, Integer.MIN_VALUE, Integer.MAX_VALUE, 1));
     javax.swing.JSpinner spArribo = new javax.swing.JSpinner(new javax.swing.SpinnerNumberModel(0, 0, Integer.MAX_VALUE, 1));
 
-    // Habilitar/deshabilitar campos de E/S según el tipo
     java.awt.event.ActionListener toggleIO = e -> {
         boolean esIO = cbTipo.getSelectedIndex() == 1;
         spIoCada.setEnabled(esIO);
@@ -561,9 +670,12 @@ public void refrescarCPU(ProcesoPlanificable enEjecucion) {
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JTextArea areaLog;
+    private javax.swing.JButton btnCargar;
     private javax.swing.JButton btnCrearProceso;
+    private javax.swing.JButton btnGuardar;
     private javax.swing.JButton btnIniciar;
     private javax.swing.JButton btnPausar;
+    private javax.swing.JButton btnReset;
     private javax.swing.JComboBox<String> comboAlgoritmos;
     private javax.swing.JLabel jLabel1;
     private javax.swing.JPanel jPanel1;

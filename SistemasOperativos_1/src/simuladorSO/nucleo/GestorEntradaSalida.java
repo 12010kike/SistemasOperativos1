@@ -39,13 +39,11 @@ public class GestorEntradaSalida {
 
     public void apagar() { dispositivo.detener(); }
 
-    // --- OPCIÓN A: firma antigua, pero sin depender de ioDurM() en compilación
     public void solicitarES(ProcesoPlanificable p, long cicloActual) {
-        int durTicks = extraerDuracionES(p); // intenta ioDurM()/ioDur()/getIoDur() por reflexión; si no, 1
+        int durTicks = extraerDuracionES(p); 
         solicitarES(p, durTicks, cicloActual);
     }
 
-    // --- OPCIÓN B: firma preferida (pásame la duración explícita desde el intérprete)
     public void solicitarES(ProcesoPlanificable p, int durTicks, long cicloActual) {
         try {
             mutex.acquire();

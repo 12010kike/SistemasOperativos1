@@ -25,9 +25,6 @@ public interface ControladorSimulador {
 
     void setTickMs(long ms);
 
-    /**
-     * Devuelve la duración actual de ciclo en milisegundos.
-     */
     int getMsPorCiclo();
 
     void setPolitica(String nombre);

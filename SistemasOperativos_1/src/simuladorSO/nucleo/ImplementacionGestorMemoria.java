@@ -23,7 +23,6 @@ public class ImplementacionGestorMemoria implements GestorMemoria{
     }
 
     private int estimar(ProcesoPlanificable p) {
-        // puedes cambiar la heurística; esta funciona bien para demos
         return Math.max(1, p.totalInstrucciones() / 2);
     }
 
@@ -61,7 +60,6 @@ public class ImplementacionGestorMemoria implements GestorMemoria{
 
     @Override
     public boolean reingresar(ProcesoPlanificable p) {
-        // semanticamente igual que intentarCargar, pero separado para tu interfaz
         return intentarCargar(p);
     }
 

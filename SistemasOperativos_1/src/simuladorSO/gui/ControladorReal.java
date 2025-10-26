@@ -1,6 +1,5 @@
 package simuladorSO.gui;
 
-// --- Lógica ---
 import simuladorSO.nucleo.CPU;
 import simuladorSO.nucleo.Despachador;
 import simuladorSO.planificador.PlanificadorCortoPlazo;
@@ -8,35 +7,25 @@ import simuladorSO.modelo.ProcesoPlanificable;
 import simuladorSO.nucleo.EventoSistema;
 import simuladorSO.nucleo.GestorEntradaSalida;
 
-// --- Crear procesos de prueba ---
 import simuladorSO.modelo.GeneradorProcesos;
 import simuladorSO.modelo.TipoProceso;
 
-
-// --- Colecciones ---
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-// --- Map para métricas ---
 import java.util.HashMap;
-
-/**
- *
- * @author santi
- */
 
 public class ControladorReal implements ControladorSimulador {
 
-    // --- MIEMBROS ---
     private final Señalizador señalizador;
     private final CPU cpu;
     private final Despachador despachador;
     private final Map<String, PlanificadorCortoPlazo> planificadores;
     private volatile PlanificadorCortoPlazo planificadorActual;
-    
+
     private GestorEntradaSalida gestorES;
     private volatile boolean corriendo = false;
     private volatile long tickMs = 500;
@@ -45,18 +34,38 @@ public class ControladorReal implements ControladorSimulador {
     private final Set<ProcesoPlanificable> bloqueadosGUI = new LinkedHashSet<>();
 
     private final GeneradorProcesos generador;
-    
-    // MÉTRICAS 
+
+
     private static final class Stats {
-        long t0 = -1;          // ciclo arribo (READY)
-        long tPrimera = -1;    // primer RUNNING
-        long tFin = -1;        // fin
-        long cpuTicks = 0;     // ciclos ejecutados
+        long t0 = -1;          
+        long tPrimera = -1;    
+        long tFin = -1;        
+        long cpuTicks = 0;     
     }
     private final Map<Long, Stats> stats = new HashMap<>();
     private Stats st(long pid) { return stats.computeIfAbsent(pid, k -> new Stats()); }
 
-    // ======== CTOR ========
+    private long totalCiclos = 0;
+    private long ciclosConCPUGlobal = 0;
+
+    private static final int VENTANA = 100;
+    private final java.util.ArrayDeque<Boolean> histCPU = new java.util.ArrayDeque<>(VENTANA);
+    private final java.util.ArrayDeque<Boolean> histTerminados = new java.util.ArrayDeque<>(VENTANA);
+    private int ciclosConCPUVentana = 0;
+    private int terminadosEnVentana = 0;
+    private Long ultimoPidEnCPU = null;
+
+
+    private final Object lockReset = new Object();
+    private volatile boolean resetPendiente = false;
+    private void limpiarPlanificadores() {
+    if (planificadores == null) return;
+    for (PlanificadorCortoPlazo p : planificadores.values()) {
+        try { p.clear(); } catch (Exception ignore) {}
+    }
+}
+
+
     public ControladorReal(Señalizador señalizador, CPU cpu, PlanificadorCortoPlazo planificadorInicial,
                            Despachador despachador, Map<String, PlanificadorCortoPlazo> planificadores,
                            GeneradorProcesos generador, GestorEntradaSalida gestorES) {
@@ -67,80 +76,129 @@ public class ControladorReal implements ControladorSimulador {
         this.planificadores = planificadores;
         this.gestorES = gestorES;
         this.generador = generador;
+
         if (this.gestorES == null) {
-        GestorEntradaSalida.Logger esLogger = (ciclo, evento, detalle) -> {
-            if (señalizador != null) {
-                señalizador.empujarEvento(
-                    EventoSistema.DISPATCH,
-                    "[" + evento + "]",
-                    detalle
-                );
-            }
-        };
-        this.gestorES = new GestorEntradaSalida(this.planificadorActual, esLogger);
+            GestorEntradaSalida.Logger esLogger = (ciclo, evento, detalle) -> {
+                if (señalizador != null) {
+                    señalizador.empujarEvento(
+                        EventoSistema.DISPATCH,
+                        "[" + evento + "]",
+                        detalle
+                    );
+                }
+            };
+            this.gestorES = new GestorEntradaSalida(this.planificadorActual, esLogger);
+        }
+        this.gestorES.setMsPorCiclo((int) this.tickMs);
     }
-    this.gestorES.setMsPorCiclo((int) this.tickMs);
 
-    }
-
-    // --- Accesores usados por el hilo de simulación ---
     public boolean estaCorriendo() { return corriendo; }
     public long getTickMs() { return tickMs; }
     public PlanificadorCortoPlazo getPlanificadorActual() { return planificadorActual; }
 
-    // ======== Helpers de MÉTRICAS que usará Main ========
     public void marcarPrimeraRespuestaSiAplica(long pid, long ciclo) {
         Stats s = st(pid);
         if (s.tPrimera < 0) s.tPrimera = ciclo;
     }
     public void sumarCpuTick(long pid) {
         st(pid).cpuTicks++;
+        ciclosConCPUGlobal++;
     }
 
-public void actualizarVistaCicloACiclo(long cicloActual) {
+    public void actualizarVistaCicloACiclo(long cicloActual, String sufijoExtra) {
     ProcesoPlanificable running = cpu.ejecutando();
-    // NO sumar cpuTicks aquí si ya lo haces en el hilo principal
     señalizador.refrescarCPU(running);
+    boolean cambioContexto =
+            (running == null && ultimoPidEnCPU != null) ||
+            (running != null && !Long.valueOf(running.pid()).equals(ultimoPidEnCPU));
 
-    List<ProcesoPlanificable> listos = planificadorActual.getColaListos();
-
-    List<ProcesoPlanificable> bloqueadosPlan = planificadorActual.getColaBloqueados();
-    List<ProcesoPlanificable> bloqueados = new ArrayList<>();
-    if (bloqueadosPlan != null && !bloqueadosPlan.isEmpty()) {
-        bloqueados.addAll(bloqueadosPlan);
-    } else {
-        bloqueados.addAll(bloqueadosGUI);
+    if (cambioContexto) {
+        if (running != null) {
+            señalizador.empujarEvento(
+                EventoSistema.DISPATCH,
+                "RUN",
+                running.nombre() + " @ciclo " + cicloActual
+            );
+            ultimoPidEnCPU = running.pid();
+        } else {
+            señalizador.empujarEvento(
+                EventoSistema.DISPATCH,
+                "SO",
+                "CPU libre @ciclo " + cicloActual
+            );
+            ultimoPidEnCPU = null;
+        }
     }
-    
-    // --- métricas agregadas ---
-    long sumTA = 0, sumTR = 0, nTA = 0, nTR = 0;
-    for (Stats s : stats.values()) {
-        if (s.tFin >= 0 && s.t0 >= 0) { sumTA += (s.tFin - s.t0); nTA++; }
-        if (s.tPrimera >= 0 && s.t0 >= 0) { sumTR += (s.tPrimera - s.t0); nTR++; }
-    }
-    long turnaroundProm = (nTA > 0 ? sumTA / nTA : 0);
-    long respuestaProm  = (nTR > 0 ? sumTR / nTR : 0);
 
-    // Enviar a la GUI (una sola vez)
-    señalizador.setTextoMetricas("T.Avg=" + turnaroundProm + "  |  R.Avg=" + respuestaProm);
-    señalizador.refrescarColas(listos, bloqueados, colaTerminados, null, null);
-    señalizador.actualizarMetricas(cicloActual);
+        List<ProcesoPlanificable> listos = planificadorActual.getColaListos();
 
-    System.out.println("Ciclo " + cicloActual + " -> Listos: "
-            + listos.size() + ", Bloqueados: " + bloqueados.size()
-            + " | T.Avg=" + turnaroundProm + " | R.Avg=" + respuestaProm);
+        List<ProcesoPlanificable> bloqueadosPlan = planificadorActual.getColaBloqueados();
+        List<ProcesoPlanificable> bloqueados = new ArrayList<>();
+        if (bloqueadosPlan != null && !bloqueadosPlan.isEmpty()) {
+            bloqueados.addAll(bloqueadosPlan);
+        } else {
+            bloqueados.addAll(bloqueadosGUI);
         }
 
-    // —— Notificaciones desde Main
+        long sumTA = 0, sumTR = 0, nTA = 0, nTR = 0;
+        for (Stats s : stats.values()) {
+            if (s.tFin >= 0 && s.t0 >= 0) { sumTA += (s.tFin - s.t0); nTA++; }
+            if (s.tPrimera >= 0 && s.t0 >= 0) { sumTR += (s.tPrimera - s.t0); nTR++; }
+        }
+        long turnaroundProm = (nTA > 0 ? sumTA / nTA : 0);
+        long respuestaProm  = (nTR > 0 ? sumTR / nTR : 0);
+
+        int tamVent = Math.max(1, histCPU.size());
+        int porcentajeCPU = (int) Math.round(
+                100.0 * (tamVent == 0 ? 0.0 : (ciclosConCPUVentana * 1.0 / tamVent))
+        );
+        double thPorCiclo = (tamVent > 0) ? (terminadosEnVentana * 1.0 / tamVent) : 0.0;
+        double thPor100 = thPorCiclo * 100.0;
+        
+        double util01 = (tamVent == 0) ? 0.0 : (ciclosConCPUVentana * 1.0 / tamVent);
+        señalizador.plotUtil(util01);
+
+
+        String texto = "T.Avg=" + turnaroundProm +
+                       " | R.Avg=" + respuestaProm +
+                       " | Th/100=" + String.format(java.util.Locale.US, "%.1f", thPor100) +
+                       " | %CPU=" + porcentajeCPU;
+
+        if (sufijoExtra != null && !sufijoExtra.isBlank()) {
+            texto += sufijoExtra;   
+        }
+
+        señalizador.setTextoMetricas(texto);
+        señalizador.refrescarColas(listos, bloqueados, colaTerminados, null, null);
+        señalizador.actualizarMetricas(cicloActual);
+    }
+
     public void notificarProcesoBloqueado(ProcesoPlanificable p, long ciclo) {
         if (p != null) {
-            bloqueadosGUI.add(p); // Set evita duplicados
-            // métrica: no cambiamos nada aquí salvo que quieras llevar IO ticks
+            bloqueadosGUI.add(p);
             señalizador.empujarEvento(
                 EventoSistema.IO_REQUEST,
                 "Proceso pasa a BLOQUEADOS (E/S)",
                 p.nombre() + " @ciclo " + ciclo
             );
+        }
+    }
+
+    /** Actualiza contadores de la ventana deslizante (para %CPU y Th/100). */
+    public void actualizarVentanaMetricas(boolean huboCPU, boolean termino) {
+        totalCiclos++;
+
+        histCPU.addLast(huboCPU);
+        if (huboCPU) ciclosConCPUVentana++;
+        if (histCPU.size() > VENTANA) {
+            boolean sale = histCPU.removeFirst();
+            if (sale) ciclosConCPUVentana--;
+        }
+
+        histTerminados.addLast(termino);
+        if (termino) terminadosEnVentana++;
+        if (histTerminados.size() > VENTANA) {
+            if (histTerminados.removeFirst()) terminadosEnVentana--;
         }
     }
 
@@ -159,13 +217,27 @@ public void actualizarVistaCicloACiclo(long cicloActual) {
     }
 
     public void notificarProcesoTerminado(ProcesoPlanificable p, long ciclo) {
-        if (p != null) {
-            colaTerminados.add(p);
-            st(p.pid()).tFin = ciclo; // métrica: fin
+    if (p != null) {
+        colaTerminados.add(p);
+        st(p.pid()).tFin = ciclo;
+
+        try {
+            p.setEstado(simuladorSO.modelo.EstadoProceso.TERMINATED);
+        } catch (Throwable ignore) { /* si no existe setEstado, no pasa nada */ }
+
+        señalizador.empujarEvento(
+            EventoSistema.DISPATCH,
+            "EXIT",
+            p.nombre() + " (pid=" + p.pid() + ") @ciclo " + ciclo
+        );
+
+        if (ultimoPidEnCPU != null && ultimoPidEnCPU.equals(p.pid())) {
+            ultimoPidEnCPU = null;
         }
     }
+}
 
-    // --- Interfaz ControladorSimulador ---
+
     @Override
     public void play() {
         corriendo = true;
@@ -179,15 +251,20 @@ public void actualizarVistaCicloACiclo(long cicloActual) {
     }
 
     @Override
-    public void setPolitica(String nombre) {
-        PlanificadorCortoPlazo nuevo = planificadores.get(nombre);
-        if (nuevo != null) {
-            this.planificadorActual = nuevo;
-            if (gestorES != null) gestorES.setPlanificador(planificadorActual);
-            señalizador.empujarEvento(EventoSistema.DISPATCH, "Política cambiada a " + nombre, "");
-            System.out.println("Controlador: Política cambiada a " + nombre);
+public void setPolitica(String nombre) {
+    PlanificadorCortoPlazo nuevo = planificadores.get(nombre);
+    if (nuevo != null) {
+        this.planificadorActual = nuevo;
+        if (gestorES != null) gestorES.setPlanificador(planificadorActual);
+        señalizador.empujarEvento(EventoSistema.DISPATCH, "Política cambiada a " + nombre, "");
+        System.out.println("Controlador: Política cambiada a " + nombre);
+
+        if (señalizador instanceof SimuladorGUI gui) {
+            gui.setAlgoritmoSeleccionado(nombre);
         }
     }
+}
+    
 
     @Override
     public void generarProcesoDePrueba() {
@@ -216,36 +293,201 @@ public void actualizarVistaCicloACiclo(long cicloActual) {
             señalizador.empujarEvento(EventoSistema.DISPATCH, "Nuevo proceso CPU-Bound creado.", p.nombre());
         }
 
-        // métrica: arribo (t0) a listos (no tenemos ciclo real aquí; usa 0 por ahora)
         st(p.pid()).t0 = (st(p.pid()).t0 < 0 ? 0L : st(p.pid()).t0);
-
         planificadorActual.encolar(p, 0L);
     }
+    
+    @Override
+public void reset() {
+    pause();
 
-     
-    // Métodos no usados por ahora
-    @Override public void reset() {}
+    synchronized (lockReset) {
+        limpiarPlanificadores();
+
+        colaTerminados.clear();
+        bloqueadosGUI.clear();
+        stats.clear();
+
+        histCPU.clear();
+        histTerminados.clear();
+        terminadosEnVentana = 0;
+        totalCiclos = 0;
+        ciclosConCPUGlobal = 0;
+        ciclosConCPUVentana = 0;
+
+        señalizador.refrescarColas(java.util.List.of(), java.util.List.of(), java.util.List.of(), null, null);
+        señalizador.refrescarCPU(null);
+        señalizador.setTextoMetricas("—");
+
+        resetPendiente = estaCorriendo(); 
+    }
+}
+
+
+
+    public boolean consumirResetPendiente() {
+        synchronized (lockReset) {
+            if (resetPendiente) { resetPendiente = false; return true; }
+            return false;
+        }
+    }
+
     @Override
     public void setQuantumRR(int q) {
         if (q <= 0) return;
-        // Si el planificador actual es RR, setéalo directo
         if (planificadorActual instanceof simuladorSO.planificador.PlanificadorRR rr) {
-            rr.reconfigurar(Integer.valueOf(q)); // o rr.setQuantum(q);
+            rr.reconfigurar(Integer.valueOf(q));
             señalizador.empujarEvento(EventoSistema.DISPATCH, "Quantum RR actualizado", "q=" + q);
             return;
         }
-        // Si no está activo, pero lo tenés registrado, también actualízalo
         PlanificadorCortoPlazo p = planificadores.get("RR");
         if (p instanceof simuladorSO.planificador.PlanificadorRR rr2) {
-            rr2.reconfigurar(Integer.valueOf(q)); // o rr2.setQuantum(q);
+            rr2.reconfigurar(Integer.valueOf(q));
             señalizador.empujarEvento(EventoSistema.DISPATCH, "Quantum RR actualizado (en planificador RR)", "q=" + q);
         }
     }
 
     @Override public void setMLFQ(int niveles, int[] quantums) {}
     @Override public void generarProcesosAleatorios(int cantidad) {}
-    @Override public void cargarConfig(String path) {}
-    @Override public void guardarConfig(String path) {}
+@Override
+public void guardarConfig(String path) {
+    if (path == null || path.isBlank()) return;
+
+    try (var bw = java.nio.file.Files.newBufferedWriter(
+             java.nio.file.Path.of(path), java.nio.charset.StandardCharsets.UTF_8);
+         var pw = new java.io.PrintWriter(bw)) {
+
+        pw.println("# Sim config");
+        pw.println("policy=" + getPlanificadorActual().politica().name());
+        pw.println("ms_per_tick=" + getMsPorCiclo());
+
+        var prr = planificadores.get("RR");
+        if (prr instanceof simuladorSO.planificador.PlanificadorRR rr) {
+            pw.println("quantum_rr=" + rr.getQuantum());
+        } else {
+            pw.println("quantum_rr=0");
+        }
+
+        pw.println("mlfq_levels=3");
+        pw.println("mlfq_quantums=2,4,8");
+        pw.println("mlfq_age=20");
+
+        var listos = getPlanificadorActual().getColaListos();
+        var bloqs  = getPlanificadorActual().getColaBloqueados();
+        var todos  = new java.util.ArrayList<simuladorSO.modelo.ProcesoPlanificable>();
+        if (listos != null) todos.addAll(listos);
+        if (bloqs  != null) todos.addAll(bloqs);
+
+        for (var p : todos) {
+            String tipo = (p.tipo() == simuladorSO.modelo.TipoProceso.CPU_BOUND ? "CPU" : "IO");
+            int durAprox = Math.max(1, p.pc() + p.instruccionesRestantes());
+            pw.printf(java.util.Locale.US,
+                "process=nombre:%s,dur:%d,tipo:%s,ioCada:%d,ioDura:%d,prio:%d,t0:%d%n",
+                p.nombre(), durAprox, tipo, p.ioCadaK(), p.ioDuraM(), p.prioridad(), 0L
+            );
+        }
+    } catch (Exception ex) {
+        ex.printStackTrace();
+        señalizador.empujarEvento(simuladorSO.nucleo.EventoSistema.DISPATCH,
+                "Error guardando config", ex.getMessage());
+    }
+}
+
+        private void esperarAplicacionReset() {
+        for (int i = 0; i < 25; i++) {         
+            try { Thread.sleep(10); } catch (InterruptedException e) {
+                Thread.currentThread().interrupt(); break;
+            }
+            try {
+                var plan = getPlanificadorActual();
+                if (plan.getColaListos().isEmpty() && plan.getColaBloqueados().isEmpty()) break;
+            } catch (Exception ignore) { /* no-op */ }
+        }
+    }
+
+@Override
+public void cargarConfig(String path) {
+    if (path == null || path.isBlank()) return;
+
+    var props = new java.util.Properties();
+    var processLines = new java.util.ArrayList<String>();
+
+    try (var br = java.nio.file.Files.newBufferedReader(
+            java.nio.file.Path.of(path), java.nio.charset.StandardCharsets.UTF_8)) {
+        String line;
+        while ((line = br.readLine()) != null) {
+            line = line.trim();
+            if (line.isEmpty() || line.startsWith("#")) continue;
+            if (line.startsWith("process=")) {
+                processLines.add(line.substring("process=".length()));
+            } else {
+                int eq = line.indexOf('=');
+                if (eq > 0) props.setProperty(line.substring(0, eq).trim(), line.substring(eq + 1).trim());
+            }
+        }
+    } catch (Exception ex) {
+        ex.printStackTrace();
+        señalizador.empujarEvento(EventoSistema.DISPATCH, "Error leyendo config", ex.getMessage());
+        return;
+    }
+
+    pause();
+    reset();                     
+
+    setPolitica(props.getProperty("policy", "FCFS"));
+
+    try { setMsPorCiclo(Integer.parseInt(props.getProperty("ms_per_tick", "50"))); }
+    catch (NumberFormatException ignore) {}
+
+    try {
+        int q = Integer.parseInt(props.getProperty("quantum_rr", "0"));
+        if (q > 0) setQuantumRR(q);
+    } catch (NumberFormatException ignore) {}
+
+    for (String pl : processLines) {
+        var kv     = parseProcessLine(pl);
+        if (kv == null) continue;
+
+        String nombre = kv.getOrDefault("nombre", "P_" + (System.currentTimeMillis()%1000));
+        int dur       = parseIntSafe(kv.get("dur"), 10);
+        String tipoS  = kv.getOrDefault("tipo", "CPU");
+        int ioCada    = parseIntSafe(kv.get("ioCada"), 0);
+        int ioDura    = parseIntSafe(kv.get("ioDura"), 0);
+        int prio      = parseIntSafe(kv.get("prio"), 0);
+        long t0       = parseLongSafe(kv.get("t0"), 0L);
+
+        var tipo = "IO".equalsIgnoreCase(tipoS)
+            ? simuladorSO.modelo.TipoProceso.IO_BOUND
+            : simuladorSO.modelo.TipoProceso.CPU_BOUND;
+
+        generarProcesoManual(nombre, dur, tipo, ioCada, ioDura, prio, t0);
+    }
+
+    javax.swing.SwingUtilities.invokeLater(() -> actualizarVistaCicloACiclo(0L, ""));
+    señalizador.empujarEvento(EventoSistema.DISPATCH, "Config cargada", path);
+}
+
+    private static int parseIntSafe(String s, int def) {
+        try { return Integer.parseInt(s); } catch (Exception e) { return def; }
+    }
+    private static long parseLongSafe(String s, long def) {
+        try { return Long.parseLong(s); } catch (Exception e) { return def; }
+    }
+    private static java.util.Map<String,String> parseProcessLine(String line) {
+        java.util.Map<String,String> m = new java.util.HashMap<>();
+        try {
+            for (String part : line.split(",")) {
+                int p = part.indexOf(':');
+                if (p <= 0) continue;
+                String k = part.substring(0, p).trim();
+                String v = part.substring(p + 1).trim();
+                m.put(k, v);
+            }
+            return m;
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     @Override
     public void generarProcesoManual(String nombre, int durTotal, simuladorSO.modelo.TipoProceso tipo,
@@ -264,7 +506,6 @@ public void actualizarVistaCicloACiclo(long cicloActual) {
             nombre, durTotal, tipo, ioCadaK, ioDuraM, prioridad, t0
         );
 
-        // métrica: arribo real (t0 recibido)
         Stats s = st(p.pid());
         if (s.t0 < 0) s.t0 = t0;
 
@@ -277,24 +518,24 @@ public void actualizarVistaCicloACiclo(long cicloActual) {
         );
     }
 
-@Override
-public void setMsPorCiclo(int ms) {
-    if (ms < 1) ms = 1;
-    this.tickMs = ms;
-    if (gestorES != null) gestorES.setMsPorCiclo(ms);
-}
+    @Override
+    public void setMsPorCiclo(int ms) {
+        if (ms < 1) ms = 1;
+        this.tickMs = ms;
+        if (gestorES != null) gestorES.setMsPorCiclo(ms);
+    }
 
-@Override
-public int getMsPorCiclo() {
-    long v = (tickMs < 1 ? 1 : tickMs);
-    return (int) v;
-}
+    @Override
+    public int getMsPorCiclo() {
+        long v = (tickMs < 1 ? 1 : tickMs);
+        return (int) v;
+    }
 
-@Override
-public void setTickMs(long ms) {
-    if (ms < 1) ms = 1;
-    this.tickMs = ms;
-    if (gestorES != null) gestorES.setMsPorCiclo((int) ms);
-}
-
+    @Override
+    public void setTickMs(long ms) {
+        if (ms < 1) ms = 1;
+        this.tickMs = ms;
+        if (gestorES != null) gestorES.setMsPorCiclo((int) ms);
+    }
+    
 }

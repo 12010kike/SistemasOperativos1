@@ -64,68 +64,47 @@ public class ColaEnlazada<T> implements Cola<T> {
             }
         };
     }  
-    // --- INICIO DE MODIFICACIONES PARA LA GUI ---
-    // Este método fue añadido para cumplir con el contrato de la GUI.
-    // Proporciona una COPIA de los datos de la cola en un formato estándar (java.util.List)
-    // para que la Vista (la GUI) pueda mostrarlos sin conocer la implementación interna de esta cola.
-    // La lógica principal del simulador NO utiliza este método para gestionar el estado.
     
     public List<T> toList() {
-        // 1. Se crea el ArrayList temporal que servirá como contenedor de transporte.
         List<T> listaParaGUI = new ArrayList<>();
         
-        // 2. Se recorre la estructura de datos interna (la lista enlazada) desde la cabeza a la cola.
         Nodo<T> actual = this.head;
         while (actual != null) {
-            // 3. Se añade cada elemento a la lista temporal.
             listaParaGUI.add(actual.v);
             actual = actual.next;
         }
         
-        // 4. Se devuelve la copia en formato estándar.
         return listaParaGUI;
     }
-    /**
-     * Verifica si un elemento específico se encuentra en la cola.
-     * @param elemento El elemento a buscar.
-     * @return true si el elemento está en la cola, false en caso contrario.
-     */
     public boolean contiene(T elemento) {
-        Nodo<T> actual = this.head; // CORREGIDO: se usa 'head' en lugar de 'frente'
+        Nodo<T> actual = this.head; 
         while (actual != null) {
-            // CORREGIDO: se usa 'actual.v' en lugar de 'actual.datos'
             if (actual.v.equals(elemento)) {
                 return true;
             }
-            actual = actual.next; // CORREGIDO: se usa 'next' en lugar de 'siguiente'
+            actual = actual.next; 
         }
         return false;
     }
 
-    /**
-    * Remueve la primera ocurrencia de un elemento específico de la cola.
-    * @param elemento El elemento a remover.
-    */
-    public void remover(T elemento) {
-        if (head == null) return; // CORREGIDO: se usa 'head'
 
-        // Caso 1: El elemento a remover es el primero
-        if (head.v.equals(elemento)) { // CORREGIDO: se usa 'head.v'
-            head = head.next; // CORREGIDO: se usa 'next'
+    public void remover(T elemento) {
+        if (head == null) return; 
+
+        if (head.v.equals(elemento)) { 
+            head = head.next; 
             if (head != null) {
                 head.prev = null;
             } else {
-                tail = null; // CORREGIDO: se usa 'tail'
+                tail = null; 
             }
             size--;
             return;
         }
 
-        // Caso 2: El elemento está en medio o al final
         Nodo<T> actual = this.head;
-        while (actual.next != null) { // CORREGIDO: se usa 'next'
-            if (actual.next.v.equals(elemento)) { // CORREGIDO: se usa '.v'
-                // Si el nodo a borrar es el último (tail)
+        while (actual.next != null) { 
+            if (actual.next.v.equals(elemento)) { 
                 if (actual.next == tail) {
                     tail = actual;
                 }
@@ -136,8 +115,7 @@ public class ColaEnlazada<T> implements Cola<T> {
                 size--;
                 return;
             }
-            actual = actual.next; // CORREGIDO: se usa 'next'
+            actual = actual.next; 
         }
     }
-    // --- FIN DE CÓDIGO CORREGIDO ---
 }

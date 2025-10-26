@@ -27,8 +27,6 @@ public class PlanificadorFCFS implements PlanificadorCortoPlazo {
     public void registrarProcesoBloqueado(ProcesoPlanificable p) {
         try {
             mutex.acquire();
-            // Un proceso en la CPU ya no está en la cola de listos.
-            // Para bloquearlo, simplemente lo añadimos a la cola de bloqueados.
             if (!colaBloqueados.contiene(p)) {
                  colaBloqueados.ofrecer(p);
             }
@@ -40,7 +38,7 @@ public class PlanificadorFCFS implements PlanificadorCortoPlazo {
     public void encolar(ProcesoPlanificable p, long ciclo) {
         try {
             mutex.acquire();
-            colaBloqueados.remover(p); // Ahora esto funcionará gracias a equals()
+            colaBloqueados.remover(p); 
             if (!colaListos.contiene(p)) {
                 colaListos.ofrecer(p);
             }
@@ -55,7 +53,6 @@ public class PlanificadorFCFS implements PlanificadorCortoPlazo {
         ProcesoPlanificable p = null;
         try {
             mutex.acquire();
-            // SACAR el proceso de la cola es el comportamiento correcto.
             p = colaListos.sacar();
         } catch (InterruptedException ignored) {} 
         finally { mutex.release(); }
@@ -69,12 +66,6 @@ public class PlanificadorFCFS implements PlanificadorCortoPlazo {
     @Override public void reconfigurar(Object delta) { }
     @Override
     public PoliticaPlanificacion politica() { return PoliticaPlanificacion.FCFS; }
-
-    // --- INICIO DE MODIFICACIONES PARA LA GUI ---
-    // Se implementan los métodos de la interfaz PlanificadorCortoPlazo
-    // para exponer el estado de las colas a la interfaz gráfica.
-    // Estos métodos devuelven una COPIA de los datos para no violar el encapsulamiento.
-    
     @Override
     public List<ProcesoPlanificable> getColaListos() {
         List<ProcesoPlanificable> lista = new ArrayList<>();
@@ -98,10 +89,19 @@ public class PlanificadorFCFS implements PlanificadorCortoPlazo {
     }
     @Override
     public List<ProcesoPlanificable> getColaTerminados() {
-        // Este planificador no gestiona la cola de terminados.
-        // Por lo tanto, devuelve una lista vacía.
         return new ArrayList<>();
     }
-    
-    // --- FIN DE MODIFICACIONES PARA LA GUI ---
-}
+    @Override
+    public void clear() {
+        try {
+            mutex.acquire();
+            colaListos.limpiar();
+            colaBloqueados.limpiar();
+        } catch (InterruptedException ignored) {
+        } finally {
+            mutex.release();
+        }
+    }
+
+
+   }

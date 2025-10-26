@@ -11,17 +11,6 @@ package simuladorSO.modelo;
 public class GeneradorProcesos {
     private long nextPid = 1;
 
-    /**
-     * Parametros a mano
-     * @param nombre 
-     * @param totalInstr 
-     * @param tipo 
-     * @param ioCadaK 
-     * @param ioDuraM 
-     * @param prioridad 
-     * @param cicloLlegada 
-     * @return Proceso creado
-     */
     public Proceso crearManual(String nombre, int totalInstr,
                                TipoProceso tipo, int ioCadaK, int ioDuraM,
                                int prioridad, long cicloLlegada) {
@@ -30,12 +19,6 @@ public class GeneradorProcesos {
         return new Proceso(pcb);
     }
 
-    /**
-     * N procesos aleatorios para pruebas.
-     * @param n 
-     * @param cicloLlegadaBase 
-     * @return 
-     */
     public Proceso[] crearAleatorios(int n, long cicloLlegadaBase) {
         if (n <= 0) return new Proceso[0];
 
@@ -53,7 +36,7 @@ public class GeneradorProcesos {
             int ioCadaK = esIO ? (2 + (int)(Math.random() * 4)) : 0; 
             int ioDuraM = esIO ? (1 + (int)(Math.random() * 3)) : 0; 
 
-            int prioridad = 1 + (int)(Math.random() * 5); // 1..5
+            int prioridad = 1 + (int)(Math.random() * 5); 
 
             PCB pcb = new PCB(pid, nombre, total, tipo, ioCadaK, ioDuraM, prioridad, cicloLlegadaBase);
             arr[i] = new Proceso(pcb);

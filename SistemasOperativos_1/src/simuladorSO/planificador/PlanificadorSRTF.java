@@ -22,22 +22,51 @@ public class PlanificadorSRTF implements PlanificadorCortoPlazo {
         new ColaPrincipal<>((a, b) -> Integer.compare(a.instruccionesRestantes(), b.instruccionesRestantes()));
     private final Semaphore mutex = new Semaphore(1, true);
 
-    // ── Colas auxiliares para la GUI ───────────────────────────────
     private final ArrayList<ProcesoPlanificable> listosSnapshot = new ArrayList<>();
     private final LinkedList<ProcesoPlanificable> bloqueados    = new LinkedList<>();
     private final LinkedList<ProcesoPlanificable> terminados    = new LinkedList<>();
+
+    private void refreshSnapshot_NoLock() {
+        ArrayList<ProcesoPlanificable> tmp = new ArrayList<>();
+        while (true) {
+            ProcesoPlanificable x = cola.extraer();
+            if (x == null) break;
+            tmp.add(x);
+        }
+        for (ProcesoPlanificable x : tmp) cola.insertar(x);
+        listosSnapshot.clear();
+        listosSnapshot.addAll(tmp);
+    }
+
+    private void removerDeCola_NoLock(ProcesoPlanificable objetivo) {
+        if (objetivo == null) return;
+        ArrayList<ProcesoPlanificable> tmp = new ArrayList<>();
+        while (true) {
+            ProcesoPlanificable x = cola.extraer();
+            if (x == null) break;
+            if (!x.equals(objetivo)) tmp.add(x);
+        }
+        for (ProcesoPlanificable x : tmp) cola.insertar(x);
+    }
+
+    private void vaciarCola_NoLock() {
+        while (cola.extraer() != null) { /* drena */ }
+    }
 
     @Override
     public void encolar(ProcesoPlanificable p, long ciclo) {
         if (p == null) return;
         try {
             mutex.acquire();
-            // si vuelve de E/S, sácalo de bloqueados
+
             bloqueados.remove(p);
+            removerDeCola_NoLock(p);
             cola.insertar(p);
-            // mantener snapshot para la GUI
-            listosSnapshot.add(p);
-        } catch (InterruptedException ignored) {
+
+            if (!listosSnapshot.contains(p)) listosSnapshot.add(p);
+            refreshSnapshot_NoLock();
+
+        } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
         } finally {
             mutex.release();
@@ -50,11 +79,11 @@ public class PlanificadorSRTF implements PlanificadorCortoPlazo {
             mutex.acquire();
             ProcesoPlanificable x = cola.extraer();
             if (x != null) {
-                listosSnapshot.remove(x); // sale de listos
-                bloqueados.remove(x);     // por si quedó marcado
+                listosSnapshot.remove(x);   
+                bloqueados.remove(x);       
             }
             return x;
-        } catch (InterruptedException ignored) {
+        } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             return null;
         } finally {
@@ -63,47 +92,57 @@ public class PlanificadorSRTF implements PlanificadorCortoPlazo {
     }
 
     @Override public void alVencerQuantum(ProcesoPlanificable c, long ciclo) { /* SRTF no usa quantum */ }
+    @Override public void alArribar(ProcesoPlanificable p, ProcesoPlanificable c, long ciclo) { /* opcional/log */ }
+    @Override public void reordenarColas(long ciclo) { /* no-op (lo hace la prioridad) */ }
+    @Override public void reconfigurar(Object delta) { /* no-op */ }
+    @Override public PoliticaPlanificacion politica() { return PoliticaPlanificacion.SRTF; }
 
     @Override
-    public void alArribar(ProcesoPlanificable p, ProcesoPlanificable corriendo, long ciclo) {
-        // En SRTF hay expropiación si el nuevo tiene MENOR restante que el corriendo.
-        // La decisión real de expropiar la hace el Despachador/CPU; aquí solo avisamos.
-        if (p != null && corriendo != null &&
-            p.instruccionesRestantes() < corriendo.instruccionesRestantes()) {
-            System.out.println("→ SRTF: llegada de " + p.nombre() +
-                               " expropia a " + corriendo.nombre());
+    public boolean debeExpropiar(ProcesoPlanificable corriendo) {
+        if (corriendo == null) return false;
+        try {
+            mutex.acquire();
+            refreshSnapshot_NoLock();
+            if (listosSnapshot.isEmpty()) return false;
+            ProcesoPlanificable mejor = listosSnapshot.get(0);
+            return mejor.instruccionesRestantes() < corriendo.instruccionesRestantes();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return false;
+        } finally {
+            mutex.release();
         }
     }
 
-    @Override public void reordenarColas(long ciclo) { /* la prioridad se maneja en la cola */ }
-    @Override public void reconfigurar(Object delta) { }
-    @Override public PoliticaPlanificacion politica() { return PoliticaPlanificacion.SRTF; }
+    @Override
+    public void reencolarPorPreempcion(ProcesoPlanificable p, long ciclo) {
+        encolar(p, ciclo);
+    }
 
-    // requerido por PlanificadorCortoPlazo 
     @Override
     public void registrarProcesoBloqueado(ProcesoPlanificable p) {
         if (p == null) return;
         try {
             mutex.acquire();
+            removerDeCola_NoLock(p);  
             listosSnapshot.remove(p);
-            bloqueados.remove(p);
-            bloqueados.addLast(p);
-        } catch (InterruptedException ignored) {
+            if (!bloqueados.contains(p)) bloqueados.addLast(p);
+            refreshSnapshot_NoLock();
+        } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
         } finally {
             mutex.release();
         }
     }
 
-    // getters para la GUI
     @Override
     public List<ProcesoPlanificable> getColaListos() {
         try {
             mutex.acquire();
-            return new ArrayList<>(listosSnapshot); // vista estable
-        } catch (InterruptedException ignored) {
+            return new ArrayList<>(listosSnapshot);
+        } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-            return new ArrayList<>();
+            return List.of();
         } finally {
             mutex.release();
         }
@@ -111,11 +150,42 @@ public class PlanificadorSRTF implements PlanificadorCortoPlazo {
 
     @Override
     public List<ProcesoPlanificable> getColaBloqueados() {
-        return bloqueados;
+        try {
+            mutex.acquire();
+            return new ArrayList<>(bloqueados);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return List.of();
+        } finally {
+            mutex.release();
+        }
     }
 
     @Override
     public List<ProcesoPlanificable> getColaTerminados() {
-        return terminados; // llénala donde corresponda si marcas terminados aquí
+        try {
+            mutex.acquire();
+            return new ArrayList<>(terminados);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return List.of();
+        } finally {
+            mutex.release();
+        }
+    }
+
+    @Override
+    public void clear() {
+        try {
+            mutex.acquire();
+            vaciarCola_NoLock();
+            bloqueados.clear();
+            terminados.clear();
+            listosSnapshot.clear();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        } finally {
+            mutex.release();
+        }
     }
 }
